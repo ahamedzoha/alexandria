@@ -403,6 +403,11 @@ final class PlayerEngine {
     private static func fetchImage(_ url: URL) async -> NSImage? {
         let key = url.absoluteString as NSString
         if let cached = CoverCache.shared.object(forKey: key) { return cached }
+        if url.isFileURL {
+            guard let image = NSImage(contentsOf: url) else { return nil }
+            CoverCache.shared.setObject(image, forKey: key)
+            return image
+        }
         guard let (data, _) = try? await URLSession.shared.data(from: url),
               let image = NSImage(data: data) else { return nil }
         CoverCache.shared.setObject(image, forKey: key)

@@ -19,6 +19,7 @@ struct RootView: View {
             }
             if app.isLoggedIn && app.libraries.isEmpty {
                 await app.loadLibraries()
+                await app.flushPendingProgress()   // drain any offline-queued progress
             }
         }
     }

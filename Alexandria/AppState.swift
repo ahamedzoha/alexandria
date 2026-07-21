@@ -33,7 +33,7 @@ final class AppState {
     var selectedLibraryID: String?
     var items: [LibraryItem] = []
     var progressByItem: [String: ItemProgress] = [:]
-    var downloadedIDs: Set<String> = []
+    let downloads = DownloadStore()
     var isLoading = false
     var errorMessage: String?
 
@@ -58,7 +58,7 @@ final class AppState {
         case .notStarted:
             result = result.filter { (progressByItem[$0.id]?.fraction ?? 0) <= 0.001 }
         case .downloaded:
-            result = result.filter { downloadedIDs.contains($0.id) }
+            result = result.filter { downloads.isDownloaded($0.id) }
         }
 
         let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
@@ -164,10 +164,39 @@ final class AppState {
     }
 
     func reportProgress(itemID: String, currentTime: Double, duration: Double) async {
-        // Update the grid immediately, then persist (best-effort — never interrupt playback).
+        // Update the grid immediately + save locally for offline resume.
         let fraction = duration > 0 ? min(1, currentTime / duration) : 0
         progressByItem[itemID] = ItemProgress(fraction: fraction, isFinished: fraction >= 0.99)
-        try? await api.updateProgress(itemID: itemID, currentTime: currentTime, duration: duration)
+        downloads.saveProgress(itemID: itemID, currentTime: currentTime, duration: duration)
+
+        do {
+            try await api.updateProgress(itemID: itemID, currentTime: currentTime, duration: duration)
+            await downloads.flushPending(api: api)   // back online — drain the queue
+        } catch {
+            downloads.queuePending(itemID: itemID, currentTime: currentTime, duration: duration)
+        }
+    }
+
+    func flushPendingProgress() async {
+        await downloads.flushPending(api: api)
+    }
+
+    // MARK: Downloads
+
+    func startDownload(item: LibraryItem) async {
+        guard !downloads.isDownloaded(item.id), !downloads.isDownloading(item.id) else { return }
+        guard let session = await playSession(itemID: item.id) else { return }
+        await downloads.download(
+            item: item,
+            session: session,
+            serverURL: serverURL,
+            token: token,
+            coverURL: coverURL(itemID: item.id)
+        )
+    }
+
+    func removeDownload(itemID: String) {
+        downloads.remove(itemID)
     }
 
     private func friendly(_ error: Error) -> String {

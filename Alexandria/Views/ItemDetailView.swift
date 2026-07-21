@@ -45,6 +45,8 @@ struct ItemDetailView: View {
             .controlSize(.large)
             .disabled(loading)
 
+            downloadControl
+
             Spacer(minLength: 0)
         }
         .padding(24)
@@ -59,10 +61,51 @@ struct ItemDetailView: View {
         }
     }
 
+    @ViewBuilder private var downloadControl: some View {
+        if app.downloads.isDownloaded(item.id) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.down.circle.fill").foregroundStyle(.green)
+                Text("Downloaded").foregroundStyle(.secondary)
+                Spacer()
+                Button("Remove", role: .destructive) { app.removeDownload(itemID: item.id) }
+                    .buttonStyle(.borderless)
+            }
+            .font(.callout)
+        } else if let progress = app.downloads.activeDownloads[item.id] {
+            HStack(spacing: 8) {
+                ProgressView(value: progress)
+                Text("\(Int(progress * 100))%")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Button {
+                Task { await app.startDownload(item: item) }
+            } label: {
+                Label("Download for offline", systemImage: "arrow.down.circle")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+        }
+    }
+
     private func startPlayback() {
         loading = true
         Task {
-            if let info = await app.playSession(itemID: item.id) {
+            // Prefer local files when the book is downloaded (works offline).
+            let local = app.downloads.localSession(for: item.id)
+            let info: PlaybackInfo?
+            let cover: URL?
+            if let local {
+                info = local
+                cover = app.downloads.localCoverURL(item.id)
+            } else {
+                info = await app.playSession(itemID: item.id)
+                cover = app.coverURL(itemID: item.id)
+            }
+
+            if let info {
                 player.load(
                     session: info,
                     itemID: item.id,
@@ -70,7 +113,7 @@ struct ItemDetailView: View {
                     token: app.token,
                     title: item.title,
                     author: item.author,
-                    cover: app.coverURL(itemID: item.id)
+                    cover: cover
                 )
                 loading = false
                 dismiss()

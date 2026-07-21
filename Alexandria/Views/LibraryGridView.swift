@@ -59,6 +59,7 @@ struct CoverCell: View {
                         .strokeBorder(.white.opacity(0.08), lineWidth: 1)
                 }
                 .overlay(alignment: .topTrailing) { finishedBadge }
+                .overlay(alignment: .topLeading) { downloadBadge }
                 .shadow(color: .black.opacity(hovering ? 0.5 : 0.3),
                         radius: hovering ? 12 : 6, y: hovering ? 7 : 3)
                 .scaleEffect(hovering ? 1.03 : 1)
@@ -110,6 +111,17 @@ struct CoverCell: View {
                 .padding(5)
                 .background(Circle().fill(.green))
                 .overlay(Circle().strokeBorder(.white.opacity(0.9), lineWidth: 1.5))
+                .padding(8)
+                .shadow(radius: 3)
+        }
+    }
+
+    @ViewBuilder private var downloadBadge: some View {
+        if app.downloads.isDownloaded(item.id) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.body)
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, .blue)
                 .padding(8)
                 .shadow(radius: 3)
         }

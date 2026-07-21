@@ -34,6 +34,18 @@ final class ImageLoader {
             return
         }
 
+        // Local (downloaded) cover files.
+        if url.isFileURL {
+            if let image = NSImage(contentsOf: url) {
+                CoverCache.shared.setObject(image, forKey: key)
+                loadedURL = url
+                state = .loaded(image)
+            } else {
+                state = .failed
+            }
+            return
+        }
+
         state = .loading
         // Retry a few times — self-hosted servers drop bursts of parallel requests.
         for attempt in 0..<3 {
