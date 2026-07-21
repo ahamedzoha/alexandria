@@ -2,6 +2,12 @@ import SwiftUI
 
 struct LoginView: View {
     @Environment(AppState.self) private var app
+    @Environment(\.dismiss) private var dismiss
+
+    var isSheet = false
+    var onDone: (() -> Void)?
+
+    @State private var name = ""
     @State private var server = ""
     @State private var username = ""
     @State private var password = ""
@@ -11,13 +17,15 @@ struct LoginView: View {
             Image(systemName: "books.vertical.fill")
                 .font(.system(size: 56))
                 .foregroundStyle(.tint)
-            Text("Alexandria")
+            Text(isSheet ? "Add Server" : "Alexandria")
                 .font(.largeTitle.bold())
             Text("Connect to your audiobookshelf server")
                 .foregroundStyle(.secondary)
 
             VStack(spacing: 10) {
                 TextField("https://abs.example.com", text: $server)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Name (optional)", text: $name)
                     .textFieldStyle(.roundedBorder)
                 TextField("Username", text: $username)
                     .textFieldStyle(.roundedBorder)
@@ -35,23 +43,34 @@ struct LoginView: View {
                     .multilineTextAlignment(.center)
             }
 
-            Button(action: connect) {
-                if app.isLoading {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Text("Connect").frame(width: 120)
+            HStack(spacing: 12) {
+                if isSheet {
+                    Button("Cancel") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
                 }
+                Button(action: connect) {
+                    if app.isLoading {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text(isSheet ? "Add" : "Connect").frame(width: 100)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(server.isEmpty || username.isEmpty || app.isLoading)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(server.isEmpty || username.isEmpty || app.isLoading)
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { server = app.serverURL }
     }
 
     private func connect() {
-        Task { await app.login(server: server, username: username, password: password) }
+        Task {
+            let ok = await app.addServer(name: name, url: server, username: username, password: password)
+            if ok {
+                onDone?()
+                if isSheet { dismiss() }
+            }
+        }
     }
 }

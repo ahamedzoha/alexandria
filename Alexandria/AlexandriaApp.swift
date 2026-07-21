@@ -12,5 +12,14 @@ struct AlexandriaApp: App {
                 .environment(player)
                 .frame(minWidth: 900, minHeight: 600)
         }
+
+        MenuBarExtra {
+            MiniPlayerView()
+                .environment(app)
+                .environment(player)
+        } label: {
+            Image(systemName: player.isPlaying ? "waveform" : "headphones")
+        }
+        .menuBarExtraStyle(.window)
     }
 }

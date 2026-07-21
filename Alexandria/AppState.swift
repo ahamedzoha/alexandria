@@ -4,13 +4,15 @@ import Observation
 @MainActor
 @Observable
 final class AppState {
-    // NOTE: token in UserDefaults is fine for MVP. Move to Keychain before shipping.
-    var serverURL: String = UserDefaults.standard.string(forKey: "serverURL") ?? ""
-    var token: String? = UserDefaults.standard.string(forKey: "token")
-
     struct ItemProgress: Sendable {
         var fraction: Double
         var isFinished: Bool
+    }
+
+    struct ServerRef: Codable, Identifiable, Sendable {
+        let id: String
+        var name: String
+        var url: String
     }
 
     enum LibrarySort: String, CaseIterable, Identifiable {
@@ -29,6 +31,19 @@ final class AppState {
         var id: String { rawValue }
     }
 
+    // Sidebar sections / browse grouping
+    enum Browse: Hashable, Sendable {
+        case library
+        case authors
+        case series
+        case narrators
+    }
+
+    // Servers (tokens live in the Keychain, keyed by server id)
+    var servers: [ServerRef] = []
+    var activeServerID: String?
+
+    // Library data
     var libraries: [Library] = []
     var selectedLibraryID: String?
     var items: [LibraryItem] = []
@@ -37,13 +52,40 @@ final class AppState {
     var isLoading = false
     var errorMessage: String?
 
-    // Search / sort / filter
+    // Search / sort / filter / browse
     var searchText = ""
     var sort: LibrarySort = .title
     var filter: LibraryFilter = .all
+    var sidebar: Browse = .library
+    var groupKind: Browse?
+    var groupValue: String?
+
+    init() {
+        loadServers()
+    }
+
+    // MARK: Active server
+
+    var activeServer: ServerRef? { servers.first { $0.id == activeServerID } }
+    var serverURL: String { activeServer?.url ?? "" }
+    var token: String? { activeServerID.flatMap { Keychain.token(for: $0) } }
+    var isLoggedIn: Bool { activeServer != nil && !(token ?? "").isEmpty }
+
+    private var api: APIClient { APIClient(serverURL: serverURL, token: token) }
+
+    // MARK: Visible items
 
     var visibleItems: [LibraryItem] {
         var result = items
+
+        if let value = groupValue, let kind = groupKind {
+            switch kind {
+            case .authors: result = result.filter { $0.author == value }
+            case .narrators: result = result.filter { ($0.narrator ?? "") == value }
+            case .series: result = result.filter { $0.seriesBaseName == value }
+            case .library: break
+            }
+        }
 
         switch filter {
         case .all:
@@ -80,37 +122,105 @@ final class AppState {
         return result
     }
 
-    var isLoggedIn: Bool { !(token ?? "").isEmpty }
+    // MARK: Servers / auth
 
-    private var api: APIClient { APIClient(serverURL: serverURL, token: token) }
-
-    func login(server: String, username: String, password: String) async {
+    func addServer(name: String, url: String, username: String, password: String) async -> Bool {
         errorMessage = nil
         isLoading = true
         defer { isLoading = false }
-        let cleaned = server.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = url.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             let t = try await APIClient(serverURL: cleaned, token: nil)
                 .login(username: username, password: password)
-            serverURL = cleaned
-            token = t
-            UserDefaults.standard.set(cleaned, forKey: "serverURL")
-            UserDefaults.standard.set(t, forKey: "token")
+            let id = UUID().uuidString
+            let trimmedName = name.trimmingCharacters(in: .whitespaces)
+            let displayName = trimmedName.isEmpty ? hostName(cleaned) : trimmedName
+            Keychain.setToken(t, for: id)
+            servers.append(ServerRef(id: id, name: displayName, url: cleaned))
+            activeServerID = id
+            persistServers()
+            resetLibraryState()
             await loadLibraries()
+            return true
         } catch {
             errorMessage = friendly(error)
+            return false
+        }
+    }
+
+    func switchServer(_ id: String) async {
+        guard id != activeServerID, servers.contains(where: { $0.id == id }) else { return }
+        activeServerID = id
+        persistServers()
+        resetLibraryState()
+        await loadLibraries()
+    }
+
+    func removeServer(_ id: String) {
+        Keychain.deleteToken(for: id)
+        servers.removeAll { $0.id == id }
+        if activeServerID == id { activeServerID = servers.first?.id }
+        persistServers()
+        resetLibraryState()
+        if activeServerID != nil {
+            Task { await loadLibraries() }
         }
     }
 
     func logout() {
-        token = nil
-        UserDefaults.standard.removeObject(forKey: "token")
+        if let id = activeServerID { removeServer(id) }
+    }
+
+    private func resetLibraryState() {
         libraries = []
         items = []
         progressByItem = [:]
         selectedLibraryID = nil
+        searchText = ""
+        groupKind = nil
+        groupValue = nil
+        sidebar = .library
         errorMessage = nil
     }
+
+    private func loadServers() {
+        let defaults = UserDefaults.standard
+        if let data = defaults.data(forKey: "servers"),
+           let list = try? JSONDecoder().decode([ServerRef].self, from: data) {
+            servers = list
+        }
+        activeServerID = defaults.string(forKey: "activeServerID")
+
+        // Migrate legacy single-server storage (url + token in UserDefaults).
+        if servers.isEmpty,
+           let url = defaults.string(forKey: "serverURL"),
+           let legacyToken = defaults.string(forKey: "token"),
+           !url.isEmpty, !legacyToken.isEmpty {
+            let id = UUID().uuidString
+            Keychain.setToken(legacyToken, for: id)
+            servers = [ServerRef(id: id, name: hostName(url), url: url)]
+            activeServerID = id
+            persistServers()
+            defaults.removeObject(forKey: "serverURL")
+            defaults.removeObject(forKey: "token")
+        }
+
+        if activeServerID == nil { activeServerID = servers.first?.id }
+    }
+
+    private func persistServers() {
+        let defaults = UserDefaults.standard
+        if let data = try? JSONEncoder().encode(servers) {
+            defaults.set(data, forKey: "servers")
+        }
+        defaults.set(activeServerID, forKey: "activeServerID")
+    }
+
+    private func hostName(_ url: String) -> String {
+        URLComponents(string: url)?.host ?? url
+    }
+
+    // MARK: Library loading
 
     func loadLibraries() async {
         errorMessage = nil
@@ -137,6 +247,8 @@ final class AppState {
     func selectLibrary(_ id: String) async {
         guard id != selectedLibraryID else { return }
         selectedLibraryID = id
+        groupKind = nil
+        groupValue = nil
         await loadItems(libraryID: id)
     }
 
@@ -149,6 +261,31 @@ final class AppState {
             errorMessage = friendly(error)
         }
     }
+
+    // MARK: Browse
+
+    func showGroup(kind: Browse, value: String) {
+        groupKind = kind
+        groupValue = value
+        sidebar = .library
+    }
+
+    func clearGroup() {
+        groupKind = nil
+        groupValue = nil
+    }
+
+    var groupLabel: String? {
+        guard let value = groupValue, let kind = groupKind else { return nil }
+        switch kind {
+        case .authors: return "Author · \(value)"
+        case .narrators: return "Narrator · \(value)"
+        case .series: return "Series · \(value)"
+        case .library: return nil
+        }
+    }
+
+    // MARK: Playback support
 
     func coverURL(itemID: String) -> URL? {
         api.coverURL(itemID: itemID)
@@ -164,14 +301,13 @@ final class AppState {
     }
 
     func reportProgress(itemID: String, currentTime: Double, duration: Double) async {
-        // Update the grid immediately + save locally for offline resume.
         let fraction = duration > 0 ? min(1, currentTime / duration) : 0
         progressByItem[itemID] = ItemProgress(fraction: fraction, isFinished: fraction >= 0.99)
         downloads.saveProgress(itemID: itemID, currentTime: currentTime, duration: duration)
 
         do {
             try await api.updateProgress(itemID: itemID, currentTime: currentTime, duration: duration)
-            await downloads.flushPending(api: api)   // back online — drain the queue
+            await downloads.flushPending(api: api)
         } catch {
             downloads.queuePending(itemID: itemID, currentTime: currentTime, duration: duration)
         }

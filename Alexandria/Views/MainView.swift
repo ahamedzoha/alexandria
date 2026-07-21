@@ -1,37 +1,43 @@
 import SwiftUI
 
+enum SidebarSelection: Hashable {
+    case library(String)
+    case authors
+    case series
+    case narrators
+}
+
 struct MainView: View {
     @Environment(AppState.self) private var app
+    @State private var showAddServer = false
 
     var body: some View {
         @Bindable var app = app
         return NavigationSplitView {
-            List(selection: Binding(
-                get: { app.selectedLibraryID },
-                set: { id in if let id { Task { await app.selectLibrary(id) } } }
-            )) {
-                Section("Libraries") {
+            List(selection: sidebarSelection) {
+                Section("Library") {
                     ForEach(app.libraries) { library in
                         Label(library.name, systemImage: icon(for: library))
-                            .tag(library.id)
+                            .tag(SidebarSelection.library(library.id))
                     }
+                }
+                Section("Browse") {
+                    Label("Authors", systemImage: "person").tag(SidebarSelection.authors)
+                    Label("Series", systemImage: "books.vertical").tag(SidebarSelection.series)
+                    Label("Narrators", systemImage: "mic").tag(SidebarSelection.narrators)
                 }
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 320)
-            .safeAreaInset(edge: .bottom) {
-                HStack {
-                    Button("Log out", role: .destructive) { app.logout() }
-                        .buttonStyle(.borderless)
-                    Spacer()
-                }
-                .padding(10)
-            }
+            .safeAreaInset(edge: .bottom) { serverSwitcher }
         } detail: {
             VStack(spacing: 0) {
-                LibraryGridView()
+                if app.sidebar == .library, let label = app.groupLabel {
+                    groupChip(label)
+                }
+                detailContent
                 NowPlayingBar()
             }
-            .navigationTitle(currentLibraryName)
+            .navigationTitle(currentTitle)
             .searchable(text: $app.searchText, placement: .toolbar, prompt: "Search books")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -50,10 +56,99 @@ struct MainView: View {
                 }
             }
         }
+        .sheet(isPresented: $showAddServer) {
+            LoginView(isSheet: true) { showAddServer = false }
+                .frame(minWidth: 440, minHeight: 380)
+        }
     }
 
-    private var currentLibraryName: String {
-        app.libraries.first { $0.id == app.selectedLibraryID }?.name ?? "Alexandria"
+    @ViewBuilder private var detailContent: some View {
+        switch app.sidebar {
+        case .library: LibraryGridView()
+        case .authors: GroupListView(kind: .authors)
+        case .series: GroupListView(kind: .series)
+        case .narrators: GroupListView(kind: .narrators)
+        }
+    }
+
+    private func groupChip(_ label: String) -> some View {
+        HStack(spacing: 8) {
+            Text(label).font(.callout.weight(.medium))
+            Button {
+                app.clearGroup()
+            } label: {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private var serverSwitcher: some View {
+        Menu {
+            ForEach(app.servers) { server in
+                Button {
+                    Task { await app.switchServer(server.id) }
+                } label: {
+                    Label(server.name,
+                          systemImage: server.id == app.activeServerID ? "checkmark" : "server.rack")
+                }
+            }
+            Divider()
+            Button("Add Server…", systemImage: "plus") { showAddServer = true }
+            if let active = app.activeServer {
+                Button("Log Out of \(active.name)", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+                    app.logout()
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "server.rack")
+                Text(app.activeServer?.name ?? "Server").lineLimit(1)
+                Spacer()
+                Image(systemName: "chevron.up.chevron.down").font(.caption2)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .padding(10)
+    }
+
+    private var sidebarSelection: Binding<SidebarSelection?> {
+        Binding(
+            get: {
+                switch app.sidebar {
+                case .library: return app.selectedLibraryID.map { .library($0) }
+                case .authors: return .authors
+                case .series: return .series
+                case .narrators: return .narrators
+                }
+            },
+            set: { selection in
+                guard let selection else { return }
+                switch selection {
+                case .library(let id):
+                    app.sidebar = .library
+                    app.clearGroup()
+                    Task { await app.selectLibrary(id) }
+                case .authors: app.sidebar = .authors
+                case .series: app.sidebar = .series
+                case .narrators: app.sidebar = .narrators
+                }
+            }
+        )
+    }
+
+    private var currentTitle: String {
+        switch app.sidebar {
+        case .library:
+            return app.libraries.first { $0.id == app.selectedLibraryID }?.name ?? "Alexandria"
+        case .authors: return "Authors"
+        case .series: return "Series"
+        case .narrators: return "Narrators"
+        }
     }
 
     private func icon(for library: Library) -> String {

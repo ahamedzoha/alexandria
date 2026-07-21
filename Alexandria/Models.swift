@@ -42,12 +42,22 @@ struct LibraryItem: Decodable, Identifiable, Sendable, Hashable {
         let title: String?
         let authorName: String?
         let narratorName: String?
+        let seriesName: String?
     }
 
     var title: String { media?.metadata?.title ?? "Untitled" }
     var author: String { media?.metadata?.authorName ?? "Unknown author" }
     var narrator: String? { media?.metadata?.narratorName }
     var duration: Double? { media?.duration }
+
+    /// "Harry Potter #2" -> "Harry Potter" (drops the trailing sequence number).
+    var seriesBaseName: String? {
+        guard let raw = media?.metadata?.seriesName, !raw.isEmpty else { return nil }
+        if let hash = raw.range(of: " #") {
+            return String(raw[raw.startIndex..<hash.lowerBound])
+        }
+        return raw
+    }
 }
 
 // MARK: - Playback
