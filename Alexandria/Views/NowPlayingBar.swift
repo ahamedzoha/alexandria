@@ -68,6 +68,8 @@ struct NowPlayingBar: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
 
+                sleepMenu
+
                 Menu {
                     ForEach([0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0], id: \.self) { rate in
                         Button("\(rate, specifier: "%.2f")×") { player.setRate(Float(rate)) }
@@ -83,6 +85,36 @@ struct NowPlayingBar: View {
             .padding(.vertical, 10)
             .background(.bar)
         }
+    }
+
+    @ViewBuilder private var sleepMenu: some View {
+        Menu {
+            if player.isSleepArmed {
+                Button("Turn Off", systemImage: "moon.slash") { player.cancelSleepTimer() }
+                Divider()
+            }
+            ForEach([5, 10, 15, 30, 45, 60], id: \.self) { minutes in
+                Button("\(minutes) min") { player.setSleepTimer(minutes: minutes) }
+            }
+            Button("End of Chapter") { player.setSleepEndOfChapter() }
+                .disabled(player.chapters.isEmpty)
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: player.isSleepArmed ? "moon.fill" : "moon")
+                if let remaining = player.sleepRemainingSeconds {
+                    Text(sleepLabel(remaining)).font(.caption2.monospacedDigit())
+                }
+            }
+            .foregroundStyle(player.isSleepArmed ? Color.accentColor : .secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Sleep timer")
+    }
+
+    private func sleepLabel(_ seconds: Double) -> String {
+        let s = Int(seconds)
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 
     private var timeLabel: String {

@@ -11,16 +11,18 @@ struct LibraryGridView: View {
             if app.isLoading && app.items.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if app.items.isEmpty {
+            } else if app.visibleItems.isEmpty {
                 ContentUnavailableView(
-                    "No items",
-                    systemImage: "book.closed",
-                    description: Text(app.errorMessage ?? "This library is empty.")
+                    app.items.isEmpty ? "No items" : "No matches",
+                    systemImage: app.items.isEmpty ? "book.closed" : "magnifyingglass",
+                    description: Text(app.items.isEmpty
+                        ? (app.errorMessage ?? "This library is empty.")
+                        : "Try a different search or filter.")
                 )
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 26) {
-                        ForEach(app.items) { item in
+                        ForEach(app.visibleItems) { item in
                             CoverCell(item: item)
                                 .contentShape(Rectangle())
                                 .onTapGesture { selected = item }

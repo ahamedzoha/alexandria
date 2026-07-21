@@ -13,12 +13,72 @@ final class AppState {
         var isFinished: Bool
     }
 
+    enum LibrarySort: String, CaseIterable, Identifiable {
+        case title = "Title"
+        case author = "Author"
+        case progress = "Progress"
+        var id: String { rawValue }
+    }
+
+    enum LibraryFilter: String, CaseIterable, Identifiable {
+        case all = "All"
+        case inProgress = "In Progress"
+        case finished = "Finished"
+        case notStarted = "Not Started"
+        case downloaded = "Downloaded"
+        var id: String { rawValue }
+    }
+
     var libraries: [Library] = []
     var selectedLibraryID: String?
     var items: [LibraryItem] = []
     var progressByItem: [String: ItemProgress] = [:]
+    var downloadedIDs: Set<String> = []
     var isLoading = false
     var errorMessage: String?
+
+    // Search / sort / filter
+    var searchText = ""
+    var sort: LibrarySort = .title
+    var filter: LibraryFilter = .all
+
+    var visibleItems: [LibraryItem] {
+        var result = items
+
+        switch filter {
+        case .all:
+            break
+        case .inProgress:
+            result = result.filter {
+                let p = progressByItem[$0.id]
+                return (p?.fraction ?? 0) > 0.001 && !(p?.isFinished ?? false)
+            }
+        case .finished:
+            result = result.filter { progressByItem[$0.id]?.isFinished ?? false }
+        case .notStarted:
+            result = result.filter { (progressByItem[$0.id]?.fraction ?? 0) <= 0.001 }
+        case .downloaded:
+            result = result.filter { downloadedIDs.contains($0.id) }
+        }
+
+        let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+        if !query.isEmpty {
+            result = result.filter {
+                $0.title.lowercased().contains(query) || $0.author.lowercased().contains(query)
+            }
+        }
+
+        switch sort {
+        case .title:
+            result.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        case .author:
+            result.sort { $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending }
+        case .progress:
+            result.sort { (progressByItem[$0.id]?.fraction ?? 0) > (progressByItem[$1.id]?.fraction ?? 0) }
+        }
+
+        return result
+    }
 
     var isLoggedIn: Bool { !(token ?? "").isEmpty }
 

@@ -1,5 +1,7 @@
 import Foundation
+import AppKit
 import AVFoundation
+import MediaPlayer
 import Observation
 
 @MainActor
@@ -38,8 +40,33 @@ final class PlayerEngine {
     var duration: Double = 0      // whole-book duration
     var rate: Float = 1.0
 
+    // Sleep timer
+    enum SleepTimer: Equatable {
+        case off
+        case seconds(Double)   // remaining seconds
+        case endOfChapter
+    }
+    var sleepTimer: SleepTimer = .off
+
+    private var artwork: MPMediaItemArtwork?
+
     var currentChapterTitle: String {
         chapters.last(where: { currentTime + 0.5 >= $0.start })?.title ?? ""
+    }
+
+    private var currentChapterEnd: Double? {
+        chapters.last(where: { currentTime + 0.5 >= $0.start })?.end
+    }
+
+    var sleepRemainingSeconds: Double? {
+        if case .seconds(let s) = sleepTimer { return s }
+        return nil
+    }
+
+    var isSleepArmed: Bool { sleepTimer != .off }
+
+    init() {
+        configureRemoteCommands()
     }
 
     // MARK: Loading
@@ -76,6 +103,7 @@ final class PlayerEngine {
         currentTitle = title
         currentAuthor = author
         coverURL = cover
+        sleepTimer = .off
 
         let lastTrackDuration = sorted.last?.duration ?? 0
         duration = session.duration ?? ((offsets.last ?? 0) + lastTrackDuration)
@@ -85,6 +113,7 @@ final class PlayerEngine {
         buildQueue(fromIndex: startIndex)
         let within = currentTime - trackOffsets[currentIndex]
         if within > 0.5 { player?.seek(to: cmTime(within)) }
+        loadArtwork(cover)
         play()
     }
 
@@ -143,13 +172,15 @@ final class PlayerEngine {
                 self.currentTime = base + time.seconds
                 self.isPlaying = player.rate > 0
 
-                // Report to server roughly every 15s of ticks while playing.
                 if player.rate > 0 {
+                    // Report to server roughly every 15s; refresh Now Playing every ~5s.
                     self.tickCount += 1
+                    if self.tickCount % 10 == 0 { self.updateNowPlayingInfo() }
                     if self.tickCount >= 30 {
                         self.tickCount = 0
                         self.reportNow()
                     }
+                    self.advanceSleepTimer(step: 0.5)
                 }
             }
         }
@@ -198,12 +229,14 @@ final class PlayerEngine {
     func play() {
         player?.rate = rate
         isPlaying = true
+        updateNowPlayingInfo()
     }
 
     func pause() {
         player?.pause()
         isPlaying = false
         reportNow()
+        updateNowPlayingInfo()
     }
 
     private func reportNow() {
@@ -230,6 +263,7 @@ final class PlayerEngine {
             if wasPlaying { play() }
         }
         reportNow()
+        updateNowPlayingInfo()
     }
 
     func skip(_ delta: Double) { seek(to: currentTime + delta) }
@@ -237,6 +271,7 @@ final class PlayerEngine {
     func setRate(_ newRate: Float) {
         rate = newRate
         if isPlaying { player?.rate = newRate }
+        updateNowPlayingInfo()
     }
 
     // MARK: Chapters
@@ -258,5 +293,119 @@ final class PlayerEngine {
         } else {
             seek(to: 0)
         }
+    }
+
+    // MARK: Sleep timer
+
+    func setSleepTimer(minutes: Int) {
+        player?.volume = 1
+        sleepTimer = .seconds(Double(minutes * 60))
+    }
+
+    func setSleepEndOfChapter() {
+        player?.volume = 1
+        sleepTimer = .endOfChapter
+    }
+
+    func cancelSleepTimer() {
+        player?.volume = 1
+        sleepTimer = .off
+    }
+
+    private func advanceSleepTimer(step: Double) {
+        switch sleepTimer {
+        case .off:
+            break
+        case .seconds(let remaining):
+            let r = remaining - step
+            if r <= 0 {
+                triggerSleep()
+            } else {
+                sleepTimer = .seconds(r)
+                if r <= 5 { player?.volume = Float(r / 5) }   // fade out over last 5s
+            }
+        case .endOfChapter:
+            if let end = currentChapterEnd, currentTime >= end - 0.25 {
+                triggerSleep()
+            }
+        }
+    }
+
+    private func triggerSleep() {
+        sleepTimer = .off
+        pause()
+        player?.volume = 1
+    }
+
+    // MARK: Now Playing / remote commands
+
+    private func configureRemoteCommands() {
+        let center = MPRemoteCommandCenter.shared()
+
+        center.playCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated { self?.play() }
+            return .success
+        }
+        center.pauseCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated { self?.pause() }
+            return .success
+        }
+        center.togglePlayPauseCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated { self?.toggle() }
+            return .success
+        }
+        center.skipForwardCommand.preferredIntervals = [30]
+        center.skipForwardCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated { self?.skip(30) }
+            return .success
+        }
+        center.skipBackwardCommand.preferredIntervals = [15]
+        center.skipBackwardCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated { self?.skip(-15) }
+            return .success
+        }
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            MainActor.assumeIsolated { self?.seek(to: event.positionTime) }
+            return .success
+        }
+    }
+
+    private func updateNowPlayingInfo() {
+        guard !currentTitle.isEmpty else {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            return
+        }
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: currentChapterTitle.isEmpty ? currentTitle : currentChapterTitle,
+            MPMediaItemPropertyAlbumTitle: currentTitle,
+            MPMediaItemPropertyArtist: currentAuthor,
+            MPMediaItemPropertyPlaybackDuration: duration,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(rate) : 0.0,
+        ]
+        if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
+    }
+
+    private func loadArtwork(_ url: URL?) {
+        artwork = nil
+        guard let url else { return }
+        Task { [weak self] in
+            guard let image = await Self.fetchImage(url) else { return }
+            let art = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            self?.artwork = art
+            self?.updateNowPlayingInfo()
+        }
+    }
+
+    private static func fetchImage(_ url: URL) async -> NSImage? {
+        let key = url.absoluteString as NSString
+        if let cached = CoverCache.shared.object(forKey: key) { return cached }
+        guard let (data, _) = try? await URLSession.shared.data(from: url),
+              let image = NSImage(data: data) else { return nil }
+        CoverCache.shared.setObject(image, forKey: key)
+        return image
     }
 }

@@ -4,7 +4,8 @@ struct MainView: View {
     @Environment(AppState.self) private var app
 
     var body: some View {
-        NavigationSplitView {
+        @Bindable var app = app
+        return NavigationSplitView {
             List(selection: Binding(
                 get: { app.selectedLibraryID },
                 set: { id in if let id { Task { await app.selectLibrary(id) } } }
@@ -31,6 +32,23 @@ struct MainView: View {
                 NowPlayingBar()
             }
             .navigationTitle(currentLibraryName)
+            .searchable(text: $app.searchText, placement: .toolbar, prompt: "Search books")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Picker("Sort by", selection: $app.sort) {
+                            ForEach(AppState.LibrarySort.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        Divider()
+                        Picker("Show", selection: $app.filter) {
+                            ForEach(AppState.LibraryFilter.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                    } label: {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                    }
+                    .help("Sort and filter")
+                }
+            }
         }
     }
 
