@@ -10,10 +10,11 @@ struct ItemDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 16) {
-                AsyncImage(url: app.coverURL(itemID: item.id)) { image in
-                    image.resizable().aspectRatio(contentMode: .fit)
-                } placeholder: {
+                RemoteImage(url: app.coverURL(itemID: item.id)) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } fallback: {
                     RoundedRectangle(cornerRadius: 8).fill(.quaternary)
+                        .overlay(Image(systemName: "headphones").foregroundStyle(.secondary))
                 }
                 .frame(width: 150, height: 150)
                 .clipShape(RoundedRectangle(cornerRadius: 8))

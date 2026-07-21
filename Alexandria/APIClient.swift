@@ -76,6 +76,11 @@ struct APIClient: Sendable {
         return try await send(req, as: LibrariesResponse.self).libraries
     }
 
+    func mediaProgress() async throws -> [MediaProgress] {
+        let req = try request("api/me")
+        return try await send(req, as: MeResponse.self).mediaProgress ?? []
+    }
+
     func items(libraryID: String) async throws -> [LibraryItem] {
         var req = try request("api/libraries/\(libraryID)/items")
         // add paging + sort as query

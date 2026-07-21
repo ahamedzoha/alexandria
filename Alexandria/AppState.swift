@@ -8,9 +8,15 @@ final class AppState {
     var serverURL: String = UserDefaults.standard.string(forKey: "serverURL") ?? ""
     var token: String? = UserDefaults.standard.string(forKey: "token")
 
+    struct ItemProgress: Sendable {
+        var fraction: Double
+        var isFinished: Bool
+    }
+
     var libraries: [Library] = []
     var selectedLibraryID: String?
     var items: [LibraryItem] = []
+    var progressByItem: [String: ItemProgress] = [:]
     var isLoading = false
     var errorMessage: String?
 
@@ -41,6 +47,7 @@ final class AppState {
         UserDefaults.standard.removeObject(forKey: "token")
         libraries = []
         items = []
+        progressByItem = [:]
         selectedLibraryID = nil
         errorMessage = nil
     }
@@ -50,10 +57,21 @@ final class AppState {
         do {
             libraries = try await api.libraries()
             if selectedLibraryID == nil { selectedLibraryID = libraries.first?.id }
+            await loadProgress()
             if let id = selectedLibraryID { await loadItems(libraryID: id) }
         } catch {
             errorMessage = friendly(error)
         }
+    }
+
+    func loadProgress() async {
+        guard let list = try? await api.mediaProgress() else { return }
+        var map: [String: ItemProgress] = [:]
+        for entry in list {
+            guard let id = entry.libraryItemId else { continue }
+            map[id] = ItemProgress(fraction: entry.progress ?? 0, isFinished: entry.isFinished ?? false)
+        }
+        progressByItem = map
     }
 
     func selectLibrary(_ id: String) async {
@@ -86,7 +104,9 @@ final class AppState {
     }
 
     func reportProgress(itemID: String, currentTime: Double, duration: Double) async {
-        // Best-effort; ignore failures so playback is never interrupted.
+        // Update the grid immediately, then persist (best-effort — never interrupt playback).
+        let fraction = duration > 0 ? min(1, currentTime / duration) : 0
+        progressByItem[itemID] = ItemProgress(fraction: fraction, isFinished: fraction >= 0.99)
         try? await api.updateProgress(itemID: itemID, currentTime: currentTime, duration: duration)
     }
 

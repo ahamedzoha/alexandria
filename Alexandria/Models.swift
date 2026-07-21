@@ -96,3 +96,15 @@ struct ProgressUpdate: Encodable, Sendable {
     let progress: Double
     let isFinished: Bool
 }
+
+// MARK: - Me / progress
+
+struct MeResponse: Decodable, Sendable {
+    let mediaProgress: [MediaProgress]?
+}
+
+struct MediaProgress: Decodable, Sendable {
+    let libraryItemId: String?
+    let progress: Double?
+    let isFinished: Bool?
+}

@@ -8,9 +8,9 @@ struct NowPlayingBar: View {
             EmptyView()
         } else {
             HStack(spacing: 14) {
-                AsyncImage(url: player.coverURL) { image in
-                    image.resizable().aspectRatio(contentMode: .fit)
-                } placeholder: {
+                RemoteImage(url: player.coverURL) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } fallback: {
                     RoundedRectangle(cornerRadius: 4).fill(.quaternary)
                 }
                 .frame(width: 44, height: 44)
