@@ -1,0 +1,98 @@
+import SwiftUI
+
+struct NowPlayingBar: View {
+    @Environment(PlayerEngine.self) private var player
+
+    var body: some View {
+        if player.currentTitle.isEmpty {
+            EmptyView()
+        } else {
+            HStack(spacing: 14) {
+                AsyncImage(url: player.coverURL) { image in
+                    image.resizable().aspectRatio(contentMode: .fit)
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 4).fill(.quaternary)
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(player.currentTitle)
+                        .font(.callout.weight(.medium))
+                        .lineLimit(1)
+                    Text(player.currentChapterTitle.isEmpty ? player.currentAuthor : player.currentChapterTitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(width: 180, alignment: .leading)
+
+                Button { player.prevChapter() } label: {
+                    Image(systemName: "backward.end.fill")
+                }
+                .buttonStyle(.plain)
+                .disabled(player.chapters.isEmpty)
+
+                Button { player.skip(-15) } label: {
+                    Image(systemName: "gobackward.15")
+                }
+                .buttonStyle(.plain)
+
+                Button { player.toggle() } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.title2)
+                }
+                .buttonStyle(.plain)
+
+                Button { player.skip(30) } label: {
+                    Image(systemName: "goforward.30")
+                }
+                .buttonStyle(.plain)
+
+                Button { player.nextChapter() } label: {
+                    Image(systemName: "forward.end.fill")
+                }
+                .buttonStyle(.plain)
+                .disabled(player.chapters.isEmpty)
+
+                Slider(
+                    value: Binding(
+                        get: { player.currentTime },
+                        set: { player.seek(to: $0) }
+                    ),
+                    in: 0...max(player.duration, 1)
+                )
+                .frame(minWidth: 120)
+
+                Text(timeLabel)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+
+                Menu {
+                    ForEach([0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0], id: \.self) { rate in
+                        Button("\(rate, specifier: "%.2f")×") { player.setRate(Float(rate)) }
+                    }
+                } label: {
+                    Text("\(player.rate, specifier: "%g")×")
+                        .font(.caption.bold())
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.bar)
+        }
+    }
+
+    private var timeLabel: String {
+        func fmt(_ s: Double) -> String {
+            let x = Int(s.isFinite ? s : 0)
+            let h = x / 3600, m = (x % 3600) / 60, sec = x % 60
+            return h > 0
+                ? String(format: "%d:%02d:%02d", h, m, sec)
+                : String(format: "%d:%02d", m, sec)
+        }
+        return "\(fmt(player.currentTime)) / \(fmt(player.duration))"
+    }
+}
