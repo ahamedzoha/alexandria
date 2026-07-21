@@ -5,164 +5,133 @@ struct ItemDetailView: View {
     @Environment(PlayerEngine.self) private var player
     @Environment(\.dismiss) private var dismiss
     let item: LibraryItem
+
+    @State private var detail: ItemDetail?
     @State private var loading = false
+    @State private var descriptionExpanded = false
+    @State private var chaptersExpanded = false
 
     private var coverURL: URL? {
         app.downloads.localCoverURL(item.id) ?? app.coverURL(itemID: item.id)
     }
-
     private var progress: AppState.ItemProgress? { app.progressByItem[item.id] }
+    private var meta: ItemDetail.Media.Meta? { detail?.media?.metadata }
 
     var body: some View {
-        ZStack {
-            colorBleedBackground
-            content
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                header
+                infoGrid
+                progressCard
+                descriptionSection
+                sectionRows
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(background)
         .overlay(alignment: .topTrailing) { closeButton }
+        .environment(\.colorScheme, .dark)
+        .task { detail = await app.itemDetail(itemID: item.id) }
     }
 
-    // MARK: Background
+    // MARK: Background (subtle cover bleed, fading to dark)
 
-    private var colorBleedBackground: some View {
-        ZStack {
-            Color.black
+    private var background: some View {
+        ZStack(alignment: .top) {
+            Color(white: 0.09)
             RemoteImage(url: coverURL) { image in
                 image.resizable().scaledToFill()
             } fallback: {
-                LinearGradient(colors: [.gray, .black], startPoint: .top, endPoint: .bottom)
+                Color.clear
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
+            .frame(height: 340)
             .clipped()
-            .blur(radius: 60)
-            .opacity(0.7)
+            .blur(radius: 70)
             .saturation(1.4)
-
-            LinearGradient(colors: [.black.opacity(0.2), .black.opacity(0.85)],
-                           startPoint: .top, endPoint: .bottom)
+            .opacity(0.5)
+            .mask(LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom))
         }
         .ignoresSafeArea()
     }
 
-    // MARK: Content
+    // MARK: Header
 
-    private var content: some View {
-        ScrollView {
-            VStack(spacing: 18) {
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 18) {
                 RemoteImage(url: coverURL) { image in
                     image.resizable().aspectRatio(contentMode: .fit)
                 } fallback: {
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(.ultraThinMaterial)
-                        .overlay(Image(systemName: "headphones").font(.largeTitle).foregroundStyle(.white.opacity(0.7)))
+                    RoundedRectangle(cornerRadius: 10).fill(.ultraThinMaterial)
+                        .overlay(Image(systemName: "headphones").font(.largeTitle).foregroundStyle(.secondary))
                 }
-                .frame(width: 180, height: 180)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.15)))
-                .shadow(color: .black.opacity(0.6), radius: 22, y: 12)
-                .padding(.top, 12)
+                .frame(width: 150, height: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.white.opacity(0.12)))
+                .shadow(color: .black.opacity(0.5), radius: 16, y: 8)
 
-                VStack(spacing: 6) {
-                    Text(item.title)
-                        .font(.title.bold())
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.white)
-                    Text(item.author)
-                        .font(.title3)
-                        .foregroundStyle(.white.opacity(0.75))
-                    if let narrator = item.narrator {
-                        Text("Narrated by \(narrator)")
-                            .font(.callout)
-                            .foregroundStyle(.white.opacity(0.6))
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(item.title).font(.title.bold())
+                    if let subtitle = meta?.subtitle, !subtitle.isEmpty {
+                        Text(subtitle).font(.title3).foregroundStyle(.secondary)
                     }
+                    Text("by \(item.author)").font(.title3).foregroundStyle(.secondary)
+                    if let series = item.seriesBaseName {
+                        Label(series, systemImage: "books.vertical")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 12)
-
-                metadataPills
-                progressRow
-
-                VStack(spacing: 10) {
-                    playButton
-                    downloadControl
-                }
-                .padding(.top, 4)
+                Spacer(minLength: 0)
             }
-            .padding(28)
+
+            buttons
+        }
+    }
+
+    private var buttons: some View {
+        HStack(spacing: 10) {
+            Button(action: startPlayback) {
+                Label(playLabel, systemImage: "play.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(loading)
+
+            downloadButton
+        }
+    }
+
+    @ViewBuilder private var downloadButton: some View {
+        if app.downloads.isDownloaded(item.id) {
+            Button(role: .destructive) {
+                app.removeDownload(itemID: item.id)
+            } label: {
+                Label("Downloaded", systemImage: "checkmark.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .tint(.green)
+        } else if let fraction = app.downloads.activeDownloads[item.id] {
+            HStack(spacing: 8) {
+                ProgressView(value: fraction)
+                Text("\(Int(fraction * 100))%").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            }
             .frame(maxWidth: .infinity)
-        }
-    }
-
-    private var metadataPills: some View {
-        HStack(spacing: 8) {
-            if let duration = item.duration {
-                pill(icon: "clock", text: formatDuration(duration))
+        } else {
+            Button {
+                Task { await app.startDownload(item: item) }
+            } label: {
+                Label("Download", systemImage: "arrow.down.circle")
+                    .frame(maxWidth: .infinity)
             }
-            if let series = item.seriesBaseName {
-                pill(icon: "books.vertical", text: series)
-            }
-            if app.downloads.isDownloaded(item.id) {
-                pill(icon: "arrow.down.circle.fill", text: "Offline")
-            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
         }
-    }
-
-    private func pill(icon: String, text: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon)
-            Text(text).lineLimit(1)
-        }
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.white.opacity(0.9))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.12)))
-    }
-
-    @ViewBuilder private var progressRow: some View {
-        if let progress, progress.fraction > 0.001 {
-            VStack(spacing: 6) {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.2))
-                        Capsule()
-                            .fill(LinearGradient(colors: [.accentColor, .accentColor.opacity(0.7)],
-                                                 startPoint: .leading, endPoint: .trailing))
-                            .frame(width: max(4, geo.size.width * progress.fraction))
-                    }
-                }
-                .frame(height: 6)
-
-                HStack {
-                    Text(progress.isFinished ? "Finished" : "\(Int(progress.fraction * 100))% complete")
-                    Spacer()
-                    if !progress.isFinished, let duration = item.duration {
-                        Text("\(formatDuration(duration * (1 - progress.fraction))) left")
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.7))
-            }
-            .padding(.horizontal, 8)
-        }
-    }
-
-    private var playButton: some View {
-        Button(action: startPlayback) {
-            Label(playLabel, systemImage: "play.fill")
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    LinearGradient(colors: [.accentColor, .accentColor.opacity(0.75)],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing),
-                    in: Capsule()
-                )
-                .foregroundStyle(.white)
-        }
-        .buttonStyle(.plain)
-        .disabled(loading)
-        .opacity(loading ? 0.6 : 1)
     }
 
     private var playLabel: String {
@@ -171,38 +140,157 @@ struct ItemDetailView: View {
         return "Play"
     }
 
-    @ViewBuilder private var downloadControl: some View {
-        if app.downloads.isDownloaded(item.id) {
-            Button(role: .destructive) {
-                app.removeDownload(itemID: item.id)
-            } label: {
-                Label("Remove Download", systemImage: "trash")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(.ultraThinMaterial, in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white.opacity(0.9))
-        } else if let fraction = app.downloads.activeDownloads[item.id] {
-            HStack(spacing: 8) {
-                ProgressView(value: fraction).tint(.white)
-                Text("\(Int(fraction * 100))%")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.8))
-            }
-            .padding(.vertical, 6)
-        } else {
-            Button {
-                Task { await app.startDownload(item: item) }
-            } label: {
-                Label("Download for offline", systemImage: "arrow.down.circle")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(.ultraThinMaterial, in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white.opacity(0.9))
+    // MARK: Info grid
+
+    private var infoGrid: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            infoRow("Narrators", item.narrator)
+            infoRow("Published", meta?.publishedYear)
+            infoRow("Publisher", meta?.publisher)
+            infoRow("Genres", meta?.genres?.joined(separator: ", "))
+            infoRow("Tags", detail?.media?.tags?.joined(separator: ", "))
+            infoRow("Language", meta?.language)
+            infoRow("Duration", durationString(detail?.media?.duration ?? item.duration))
+            infoRow("Size", sizeString(detail?.media?.size))
         }
+    }
+
+    @ViewBuilder private func infoRow(_ label: String, _ value: String?) -> some View {
+        if let value, !value.isEmpty {
+            HStack(alignment: .top, spacing: 12) {
+                Text(label.uppercased())
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 96, alignment: .leading)
+                Text(value)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    // MARK: Progress
+
+    @ViewBuilder private var progressCard: some View {
+        if let progress, progress.fraction > 0.001 {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(progress.isFinished ? "Finished" : "Your progress")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text("\(Int(progress.fraction * 100))%")
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(.white.opacity(0.15))
+                        Capsule()
+                            .fill(progress.isFinished ? Color.green : Color.accentColor)
+                            .frame(width: max(4, geo.size.width * progress.fraction))
+                    }
+                }
+                .frame(height: 6)
+                if !progress.isFinished, let duration = detail?.media?.duration ?? item.duration {
+                    Text("\(durationString(duration * (1 - progress.fraction)) ?? "") remaining")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .padding(14)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+    }
+
+    // MARK: Description
+
+    @ViewBuilder private var descriptionSection: some View {
+        if let description = meta?.description, !description.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(cleaned(description))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(descriptionExpanded ? nil : 4)
+                    .textSelection(.enabled)
+                Button(descriptionExpanded ? "Read less" : "Read more") {
+                    withAnimation(.easeInOut(duration: 0.2)) { descriptionExpanded.toggle() }
+                }
+                .buttonStyle(.link)
+                .font(.callout)
+            }
+        }
+    }
+
+    // MARK: Section rows (chapters / tracks / files)
+
+    private var sectionRows: some View {
+        VStack(spacing: 10) {
+            if let chapters = detail?.media?.chapters, !chapters.isEmpty {
+                VStack(spacing: 0) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { chaptersExpanded.toggle() }
+                    } label: {
+                        sectionHeader("Chapters", count: chapters.count,
+                                      chevron: chaptersExpanded ? "chevron.up" : "chevron.down")
+                    }
+                    .buttonStyle(.plain)
+
+                    if chaptersExpanded {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(chapters.enumerated()), id: \.offset) { index, chapter in
+                                HStack {
+                                    Text("\(index + 1)").foregroundStyle(.secondary)
+                                        .frame(width: 34, alignment: .leading)
+                                    Text(chapter.title ?? "Chapter \(index + 1)").lineLimit(1)
+                                    Spacer()
+                                    Text(timestamp(chapter.start ?? 0))
+                                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                }
+                                .font(.callout)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
+                                .background(index.isMultiple(of: 2) ? Color.white.opacity(0.03) : .clear)
+                            }
+                        }
+                    }
+                }
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+
+            if let tracks = detail?.media?.audioFiles {
+                staticRow("Audio Tracks", count: tracks.count)
+            }
+            if let files = detail?.libraryFiles {
+                staticRow("Library Files", count: files.count)
+            }
+        }
+    }
+
+    private func sectionHeader(_ title: String, count: Int, chevron: String) -> some View {
+        HStack {
+            Text(title).font(.headline)
+            Text("\(count)")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 8).padding(.vertical, 2)
+                .background(.white.opacity(0.12), in: Capsule())
+            Spacer()
+            Image(systemName: chevron).foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .contentShape(Rectangle())
+    }
+
+    private func staticRow(_ title: String, count: Int) -> some View {
+        HStack {
+            Text(title).font(.headline)
+            Text("\(count)")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 8).padding(.vertical, 2)
+                .background(.white.opacity(0.12), in: Capsule())
+            Spacer()
+        }
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var closeButton: some View {
@@ -217,6 +305,8 @@ struct ItemDetailView: View {
         .padding(14)
     }
 
+    // MARK: Helpers
+
     private func startPlayback() {
         loading = true
         Task {
@@ -230,17 +320,9 @@ struct ItemDetailView: View {
                 info = await app.playSession(itemID: item.id)
                 cover = app.coverURL(itemID: item.id)
             }
-
             if let info {
-                player.load(
-                    session: info,
-                    itemID: item.id,
-                    serverURL: app.serverURL,
-                    token: app.token,
-                    title: item.title,
-                    author: item.author,
-                    cover: cover
-                )
+                player.load(session: info, itemID: item.id, serverURL: app.serverURL,
+                            token: app.token, title: item.title, author: item.author, cover: cover)
                 loading = false
                 dismiss()
             } else {
@@ -248,11 +330,33 @@ struct ItemDetailView: View {
             }
         }
     }
+
+    private func cleaned(_ html: String) -> String {
+        html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func timestamp(_ seconds: Double) -> String {
+        let x = Int(seconds)
+        let h = x / 3600, m = (x % 3600) / 60, s = x % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
 }
 
-func formatDuration(_ seconds: Double) -> String {
+func durationString(_ seconds: Double?) -> String? {
+    guard let seconds, seconds > 0 else { return nil }
     let total = Int(seconds)
     let hours = total / 3600
     let minutes = (total % 3600) / 60
-    return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+    if hours > 0 && minutes > 0 { return "\(hours) hr \(minutes) min" }
+    if hours > 0 { return "\(hours) hr" }
+    return "\(minutes) min"
+}
+
+func sizeString(_ bytes: Double?) -> String? {
+    guard let bytes, bytes > 0 else { return nil }
+    return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
 }

@@ -107,6 +107,41 @@ struct ProgressUpdate: Encodable, Sendable {
     let isFinished: Bool
 }
 
+// MARK: - Item detail (expanded)
+
+struct ItemDetail: Decodable, Sendable {
+    let media: Media?
+    let libraryFiles: [LibraryFile]?
+
+    struct LibraryFile: Decodable, Sendable {}
+
+    struct Media: Decodable, Sendable {
+        let metadata: Meta?
+        let tags: [String]?
+        let audioFiles: [AudioFile]?
+        let chapters: [Chapter]?
+        let duration: Double?
+        let size: Double?
+
+        struct AudioFile: Decodable, Sendable {}
+        struct Chapter: Decodable, Sendable {
+            let start: Double?
+            let title: String?
+        }
+        struct Meta: Decodable, Sendable {
+            let subtitle: String?
+            let authorName: String?
+            let narratorName: String?
+            let seriesName: String?
+            let genres: [String]?
+            let publishedYear: String?
+            let publisher: String?
+            let description: String?
+            let language: String?
+        }
+    }
+}
+
 // MARK: - Me / progress
 
 struct MeResponse: Decodable, Sendable {

@@ -291,6 +291,10 @@ final class AppState {
         api.coverURL(itemID: itemID)
     }
 
+    func itemDetail(itemID: String) async -> ItemDetail? {
+        try? await api.itemDetail(itemID: itemID)
+    }
+
     func playSession(itemID: String) async -> PlaybackInfo? {
         do {
             return try await api.play(itemID: itemID)

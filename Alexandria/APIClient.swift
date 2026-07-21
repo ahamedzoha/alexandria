@@ -94,6 +94,15 @@ struct APIClient: Sendable {
         return try await send(req, as: ItemsResponse.self).results
     }
 
+    func itemDetail(itemID: String) async throws -> ItemDetail {
+        var req = try request("api/items/\(itemID)")
+        if let url = req.url, var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            comps.queryItems = [URLQueryItem(name: "expanded", value: "1")]
+            if let u = comps.url { req.url = u }
+        }
+        return try await send(req, as: ItemDetail.self)
+    }
+
     func coverURL(itemID: String) -> URL? {
         var query: [URLQueryItem] = []
         if let token, !token.isEmpty { query.append(URLQueryItem(name: "token", value: token)) }
