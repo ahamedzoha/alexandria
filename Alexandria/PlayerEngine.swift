@@ -210,6 +210,7 @@ final class PlayerEngine {
         removeObservers()
         player?.pause()
         player = nil
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
     // MARK: Time helpers
@@ -340,8 +341,10 @@ final class PlayerEngine {
     // MARK: Now Playing / remote commands
 
     private func configureRemoteCommands() {
-        let center = MPRemoteCommandCenter.shared()
+        configureCommands(on: MPRemoteCommandCenter.shared())
+    }
 
+    private func configureCommands(on center: MPRemoteCommandCenter) {
         center.playCommand.addTarget { [weak self] _ in
             MainActor.assumeIsolated { self?.play() }
             return .success
@@ -372,8 +375,9 @@ final class PlayerEngine {
     }
 
     private func updateNowPlayingInfo() {
+        let infoCenter = MPNowPlayingInfoCenter.default()
         guard !currentTitle.isEmpty else {
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            infoCenter.nowPlayingInfo = nil
             return
         }
         var info: [String: Any] = [
@@ -385,8 +389,8 @@ final class PlayerEngine {
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(rate) : 0.0,
         ]
         if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
+        infoCenter.nowPlayingInfo = info
+        infoCenter.playbackState = isPlaying ? .playing : .paused
     }
 
     private func loadArtwork(_ url: URL?) {
