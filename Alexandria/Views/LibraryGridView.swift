@@ -35,7 +35,7 @@ struct LibraryGridView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(item: $selected) { item in
             ItemDetailView(item: item)
-                .frame(minWidth: 440, minHeight: 320)
+                .frame(width: 460, height: 600)
         }
     }
 }
