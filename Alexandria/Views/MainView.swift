@@ -40,10 +40,9 @@ struct MainView: View {
                 NowPlayingBar()
             }
             .navigationTitle(currentTitle)
-            .searchable(text: $app.searchText, placement: .toolbar, prompt: "Search books")
             .toolbar {
                 if app.sidebar == .library {
-                    ToolbarItem(placement: .primaryAction) {
+                    ToolbarItem(placement: .navigation) {
                         Picker("View", selection: $app.viewMode) {
                             Image(systemName: "square.grid.2x2").tag(AppState.ViewMode.grid)
                             Image(systemName: "list.bullet").tag(AppState.ViewMode.list)
@@ -51,6 +50,9 @@ struct MainView: View {
                         .pickerStyle(.segmented)
                         .help("Grid or list view")
                     }
+                }
+                ToolbarItem(placement: .principal) {
+                    searchField
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
@@ -107,6 +109,29 @@ struct MainView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(.bar)
+    }
+
+    private var searchField: some View {
+        @Bindable var app = app
+        return HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .font(.callout)
+            TextField("Search books", text: $app.searchText)
+                .textFieldStyle(.plain)
+                .frame(width: 260)
+            if !app.searchText.isEmpty {
+                Button { app.searchText = "" } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Clear search")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(.quaternary.opacity(0.5), in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.hairline))
     }
 
     private var serverSwitcher: some View {
