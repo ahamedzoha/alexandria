@@ -18,6 +18,19 @@ enum Theme {
         static let xl: CGFloat = 28
     }
     static let hairline = Color.white.opacity(0.08)
+
+    /// Deterministic placeholder-art palette (stable across launches). Used for
+    /// cover-art and avatar fallbacks — seed by a title or name.
+    private static let placeholderPalette: [[Color]] = [
+        [.indigo, .purple], [.blue, .teal], [.pink, .orange],
+        [.teal, .green], [.orange, .red], [.purple, .pink],
+        [.cyan, .blue], [.mint, .teal],
+    ]
+
+    static func placeholderColors(seed: String) -> [Color] {
+        let n = seed.utf8.reduce(0) { $0 &+ Int($1) }
+        return placeholderPalette[n % placeholderPalette.count]
+    }
 }
 
 extension View {

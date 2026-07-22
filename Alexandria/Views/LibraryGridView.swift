@@ -277,14 +277,5 @@ struct CoverArt: View {
         }
     }
 
-    // Stable per-title color (deterministic across launches).
-    private var gradientColors: [Color] {
-        let palette: [[Color]] = [
-            [.indigo, .purple], [.blue, .teal], [.pink, .orange],
-            [.teal, .green], [.orange, .red], [.purple, .pink],
-            [.cyan, .blue], [.mint, .teal],
-        ]
-        let seed = title.utf8.reduce(0) { $0 &+ Int($1) }
-        return palette[seed % palette.count]
-    }
+    private var gradientColors: [Color] { Theme.placeholderColors(seed: title) }
 }

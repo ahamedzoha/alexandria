@@ -122,13 +122,14 @@ struct StatsView: View {
                 .frame(width: 46, height: 46)
                 .background(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
                 .shadow(color: colors[0].opacity(0.5), radius: 8, y: 3)
-            Text(value).font(.system(.title, design: .rounded).weight(.bold))
+            Text(value)
+                .font(.system(.title, design: .rounded).weight(.bold))
+                .contentTransition(.numericText())
             Text(label).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 18)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.06)))
+        .contentCard(cornerRadius: 16)
         .scaleEffect((appear || reduceMotion) ? 1 : 0.9)
         .animation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.7), value: appear)
     }
@@ -227,8 +228,7 @@ struct StatsView: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, maxHeight: fillHeight ? .infinity : nil, alignment: .topLeading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.06)))
+        .contentCard(cornerRadius: 18)
     }
 
     // MARK: Formatting

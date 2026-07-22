@@ -210,12 +210,5 @@ struct PersonCard: View {
         return parts.compactMap { $0.first }.map(String.init).joined().uppercased()
     }
 
-    private var gradientColors: [Color] {
-        let palette: [[Color]] = [
-            [.indigo, .purple], [.blue, .teal], [.pink, .orange],
-            [.teal, .green], [.orange, .red], [.purple, .pink], [.cyan, .blue],
-        ]
-        let seed = name.utf8.reduce(0) { $0 &+ Int($1) }
-        return palette[seed % palette.count]
-    }
+    private var gradientColors: [Color] { Theme.placeholderColors(seed: name) }
 }
