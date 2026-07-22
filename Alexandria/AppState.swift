@@ -144,6 +144,17 @@ final class AppState {
         return result
     }
 
+    /// Pure title/author match over the loaded library, used by the global
+    /// search dropdown on non-library pages. Ignores group/filter/sort so the
+    /// dropdown always reflects the raw query.
+    var searchMatches: [LibraryItem] {
+        let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !query.isEmpty else { return [] }
+        return items
+            .filter { $0.title.lowercased().contains(query) || $0.author.lowercased().contains(query) }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
     // MARK: Servers / auth
 
     func addServer(name: String, url: String, username: String, password: String) async -> Bool {

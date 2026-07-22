@@ -11,6 +11,7 @@ enum SidebarSelection: Hashable {
 struct MainView: View {
     @Environment(AppState.self) private var app
     @State private var showAddServer = false
+    @State private var searchSelection: LibraryItem?
 
     var body: some View {
         @Bindable var app = app
@@ -39,6 +40,8 @@ struct MainView: View {
                 detailContent
                 NowPlayingBar()
             }
+            .overlay { searchOverlay }
+            .animation(.easeInOut(duration: 0.16), value: showSearchDropdown)
             .navigationTitle(currentTitle)
             .toolbar {
                 if app.sidebar == .library {
@@ -88,6 +91,42 @@ struct MainView: View {
         .sheet(isPresented: $showAddServer) {
             LoginView(isSheet: true) { showAddServer = false }
                 .frame(minWidth: 440, minHeight: 380)
+        }
+        .sheet(item: $searchSelection) { item in
+            ItemDetailView(item: item)
+                .frame(width: 560, height: 680)
+        }
+    }
+
+    // Shows the global search results dropdown on non-library pages. On the
+    // library page the grid itself filters, so no dropdown is needed there.
+    private var showSearchDropdown: Bool {
+        app.sidebar != .library
+            && !app.searchText.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    @ViewBuilder private var searchOverlay: some View {
+        if showSearchDropdown {
+            ZStack(alignment: .top) {
+                // Dim scrim; a click anywhere outside the dropdown dismisses.
+                Color.primary.opacity(0.04)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { app.searchText = "" }
+
+                SearchDropdown(
+                    matches: app.searchMatches,
+                    onSelect: { item in
+                        searchSelection = item
+                        app.searchText = ""
+                    },
+                    onShowAll: {
+                        app.sidebar = .library
+                    }
+                )
+                .padding(.top, 10)
+            }
+            .transition(.opacity)
         }
     }
 
