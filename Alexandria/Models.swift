@@ -31,6 +31,7 @@ struct ItemsResponse: Decodable, Sendable {
 struct LibraryItem: Decodable, Identifiable, Sendable, Hashable {
     let id: String
     let media: Media?
+    let addedAt: Double?   // epoch ms; powers the Recently Added shelf
 
     struct Media: Decodable, Sendable, Hashable {
         let metadata: Metadata?
@@ -195,4 +196,5 @@ struct MediaProgress: Decodable, Sendable {
     let libraryItemId: String?
     let progress: Double?
     let isFinished: Bool?
+    let lastUpdate: Double?   // epoch ms; powers "jump back in" ordering
 }

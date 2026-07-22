@@ -29,8 +29,8 @@ struct SeriesGridView: View {
             if app.isLoading && app.items.isEmpty {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if groups.isEmpty {
-                ContentUnavailableView("No Series", systemImage: "books.vertical",
-                                       description: Text("No series found in this library."))
+                ContentUnavailableView("No Series Yet", systemImage: "books.vertical",
+                                       description: Text("Series appear here once your books include series metadata."))
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 28) {
@@ -139,8 +139,9 @@ struct PeopleGridView: View {
             if app.isLoading && app.items.isEmpty {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if people.isEmpty {
-                ContentUnavailableView("Nothing Here", systemImage: kind == .authors ? "person" : "mic",
-                                       description: Text("No entries found in this library."))
+                ContentUnavailableView(kind == .authors ? "No Authors Yet" : "No Narrators Yet",
+                                       systemImage: kind == .authors ? "person" : "mic",
+                                       description: Text("These appear once your library finishes scanning."))
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 24) {

@@ -3,6 +3,7 @@ import Charts
 
 struct StatsView: View {
     @Environment(AppState.self) private var app
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var loading = true
     @State private var appear = false
     @State private var selectedItem: LibraryItem?
@@ -128,8 +129,8 @@ struct StatsView: View {
         .padding(.vertical, 18)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.06)))
-        .scaleEffect(appear ? 1 : 0.9)
-        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: appear)
+        .scaleEffect((appear || reduceMotion) ? 1 : 0.9)
+        .animation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.7), value: appear)
     }
 
     // MARK: Genres donut
@@ -283,6 +284,7 @@ private struct AuthorBar: View {
     let fraction: Double
     let animate: Bool
     let onTap: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
 
     var body: some View {
@@ -302,7 +304,7 @@ private struct AuthorBar: View {
                         Capsule().fill(.primary.opacity(0.1))
                         Capsule()
                             .fill(LinearGradient(colors: barColors, startPoint: .leading, endPoint: .trailing))
-                            .frame(width: animate ? max(4, geo.size.width * fraction) : 0)
+                            .frame(width: (animate || reduceMotion) ? max(4, geo.size.width * fraction) : 0)
                     }
                 }
                 .frame(height: 8)
@@ -314,7 +316,7 @@ private struct AuthorBar: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(name), \(value) books")
         .onHover { hovering = $0 }
-        .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(Double(rank) * 0.05), value: animate)
+        .animation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.8).delay(Double(rank) * 0.05), value: animate)
     }
 
     @ViewBuilder private var rankView: some View {

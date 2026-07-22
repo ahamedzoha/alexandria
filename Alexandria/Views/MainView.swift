@@ -1,6 +1,7 @@
 import SwiftUI
 
 enum SidebarSelection: Hashable {
+    case home
     case library(String)
     case authors
     case series
@@ -21,6 +22,9 @@ struct MainView: View {
         @Bindable var app = app
         return NavigationSplitView {
             List(selection: sidebarSelection) {
+                Section {
+                    Label("Home", systemImage: "house").tag(SidebarSelection.home)
+                }
                 Section("Library") {
                     ForEach(app.libraries) { library in
                         Label(library.name, systemImage: icon(for: library))
@@ -70,23 +74,25 @@ struct MainView: View {
                 ToolbarItem(placement: .principal) {
                     searchField
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Picker("Sort by", selection: $app.sort) {
-                            ForEach(AppState.LibrarySort.allCases) { Text($0.rawValue).tag($0) }
+                if app.sidebar == .library {
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu {
+                            Picker("Sort by", selection: $app.sort) {
+                                ForEach(AppState.LibrarySort.allCases) { Text($0.rawValue).tag($0) }
+                            }
+                            Picker("Order", selection: $app.sortAscending) {
+                                Label("Ascending", systemImage: "arrow.up").tag(true)
+                                Label("Descending", systemImage: "arrow.down").tag(false)
+                            }
+                            Divider()
+                            Picker("Show", selection: $app.filter) {
+                                ForEach(AppState.LibraryFilter.allCases) { Text($0.rawValue).tag($0) }
+                            }
+                        } label: {
+                            Image(systemName: "line.3.horizontal.decrease.circle")
                         }
-                        Picker("Order", selection: $app.sortAscending) {
-                            Label("Ascending", systemImage: "arrow.up").tag(true)
-                            Label("Descending", systemImage: "arrow.down").tag(false)
-                        }
-                        Divider()
-                        Picker("Show", selection: $app.filter) {
-                            ForEach(AppState.LibraryFilter.allCases) { Text($0.rawValue).tag($0) }
-                        }
-                    } label: {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
+                        .help("Sort and filter")
                     }
-                    .help("Sort and filter")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button { Task { await app.syncNow() } } label: {
@@ -103,7 +109,6 @@ struct MainView: View {
         }
         .sheet(isPresented: $showAddServer) {
             LoginView(isSheet: true) { showAddServer = false }
-                .frame(minWidth: 440, minHeight: 380)
         }
         .sheet(item: $searchSelection) { item in
             ItemDetailView(item: item)
@@ -151,6 +156,7 @@ struct MainView: View {
     @ViewBuilder private var detailContent: some View {
         ZStack {
             switch app.sidebar {
+            case .home: HomeView()
             case .library: LibraryGridView()
             case .authors: PeopleGridView(kind: .authors)
             case .series: SeriesGridView()
@@ -268,22 +274,7 @@ struct MainView: View {
     /// Quick-play a book straight from the search dropdown (prefers a local
     /// download, else a server session), mirroring the library grid.
     private func playItem(_ item: LibraryItem) {
-        Task {
-            let local = app.downloads.localSession(for: item.id)
-            let info: PlaybackInfo?
-            let cover: URL?
-            if let local {
-                info = local
-                cover = app.downloads.localCoverURL(item.id)
-            } else {
-                info = await app.playSession(itemID: item.id)
-                cover = app.coverURL(itemID: item.id)
-            }
-            if let info {
-                player.load(session: info, itemID: item.id, serverURL: app.serverURL,
-                            token: app.token, title: item.title, author: item.author, cover: cover)
-            }
-        }
+        startPlayback(item: item, app: app, player: player)
     }
 
     private var serverSwitcher: some View {
@@ -319,6 +310,7 @@ struct MainView: View {
         Binding(
             get: {
                 switch app.sidebar {
+                case .home: return .home
                 case .library: return app.selectedLibraryID.map { .library($0) }
                 case .authors: return .authors
                 case .series: return .series
@@ -329,6 +321,7 @@ struct MainView: View {
             set: { selection in
                 guard let selection else { return }
                 switch selection {
+                case .home: app.sidebar = .home
                 case .library(let id):
                     app.sidebar = .library
                     app.clearGroup()
@@ -344,6 +337,7 @@ struct MainView: View {
 
     private var currentTitle: String {
         switch app.sidebar {
+        case .home: return "Home"
         case .library:
             return app.libraries.first { $0.id == app.selectedLibraryID }?.name ?? "Alexandria"
         case .authors: return "Authors"

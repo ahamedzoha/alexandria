@@ -22,13 +22,22 @@ struct LibraryGridView: View {
                         .buttonStyle(.borderedProminent)
                 }
             } else if app.visibleItems.isEmpty {
-                ContentUnavailableView(
-                    app.items.isEmpty ? "No Items" : "No Matches",
-                    systemImage: app.items.isEmpty ? "book.closed" : "magnifyingglass",
-                    description: Text(app.items.isEmpty
-                        ? "This library is empty."
-                        : "Try a different search or filter.")
-                )
+                if app.items.isEmpty {
+                    ContentUnavailableView {
+                        Label("Nothing on this shelf yet", systemImage: "books.vertical")
+                    } description: {
+                        Text("When your server finishes scanning, your books land here — ready to play.")
+                    } actions: {
+                        Button("Refresh Library") { Task { await app.loadLibraries() } }
+                            .buttonStyle(.borderedProminent)
+                    }
+                } else {
+                    ContentUnavailableView(
+                        "No Matches",
+                        systemImage: "magnifyingglass",
+                        description: Text("Try a different search or filter.")
+                    )
+                }
             } else if app.viewMode == .grid {
                 gridView
             } else {
@@ -110,22 +119,7 @@ struct LibraryGridView: View {
     }
 
     private func playItem(_ item: LibraryItem) {
-        Task {
-            let local = app.downloads.localSession(for: item.id)
-            let info: PlaybackInfo?
-            let cover: URL?
-            if let local {
-                info = local
-                cover = app.downloads.localCoverURL(item.id)
-            } else {
-                info = await app.playSession(itemID: item.id)
-                cover = app.coverURL(itemID: item.id)
-            }
-            if let info {
-                player.load(session: info, itemID: item.id, serverURL: app.serverURL,
-                            token: app.token, title: item.title, author: item.author, cover: cover)
-            }
-        }
+        startPlayback(item: item, app: app, player: player)
     }
 }
 

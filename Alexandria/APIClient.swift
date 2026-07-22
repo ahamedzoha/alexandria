@@ -102,6 +102,20 @@ struct APIClient: Sendable {
         return try await send(req, as: ItemsResponse.self).results
     }
 
+    /// Newest-added items first (for the Home "Recently Added" shelf).
+    func recentlyAdded(libraryID: String, limit: Int = 20) async throws -> [LibraryItem] {
+        var req = try request("api/libraries/\(libraryID)/items")
+        if var comps = URLComponents(url: req.url!, resolvingAgainstBaseURL: false) {
+            comps.queryItems = [
+                URLQueryItem(name: "limit", value: String(limit)),
+                URLQueryItem(name: "sort", value: "addedAt"),
+                URLQueryItem(name: "desc", value: "1"),
+            ]
+            if let u = comps.url { req.url = u }
+        }
+        return try await send(req, as: ItemsResponse.self).results
+    }
+
     func authors(libraryID: String) async throws -> [AuthorRef] {
         let req = try request("api/libraries/\(libraryID)/authors")
         return try await send(req, as: AuthorsResponse.self).authors

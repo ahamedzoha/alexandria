@@ -7,6 +7,7 @@ final class AppState {
     struct ItemProgress: Sendable {
         var fraction: Double
         var isFinished: Bool
+        var lastUpdate: Double = 0   // epoch ms of the last progress update
     }
 
     struct ServerRef: Codable, Identifiable, Sendable {
@@ -38,6 +39,7 @@ final class AppState {
 
     // Sidebar sections / browse grouping
     enum Browse: Hashable, Sendable {
+        case home
         case library
         case authors
         case series
@@ -53,6 +55,7 @@ final class AppState {
     var libraries: [Library] = []
     var selectedLibraryID: String?
     var items: [LibraryItem] = []
+    var recentItems: [LibraryItem] = []   // newest-added, for the Home shelf
     var progressByItem: [String: ItemProgress] = [:]
     let downloads = DownloadStore()
     var isLoading = false
@@ -70,7 +73,7 @@ final class AppState {
     var sortAscending = true
     var filter: LibraryFilter = .all
     var viewMode: ViewMode = .grid
-    var sidebar: Browse = .library
+    var sidebar: Browse = .home
     var groupKind: Browse?
     var groupValue: String?
     var stats: LibraryStats?
@@ -106,7 +109,7 @@ final class AppState {
             case .authors: result = result.filter { $0.author.localizedCaseInsensitiveContains(value) }
             case .narrators: result = result.filter { ($0.narrator ?? "").localizedCaseInsensitiveContains(value) }
             case .series: result = result.filter { $0.seriesBaseName == value }
-            case .library, .stats: break
+            case .library, .stats, .home: break
             }
         }
 
@@ -215,12 +218,13 @@ final class AppState {
     private func resetLibraryState() {
         libraries = []
         items = []
+        recentItems = []
         progressByItem = [:]
         selectedLibraryID = nil
         searchText = ""
         groupKind = nil
         groupValue = nil
-        sidebar = .library
+        sidebar = .home
         errorMessage = nil
     }
 
@@ -325,7 +329,9 @@ final class AppState {
         var map: [String: ItemProgress] = [:]
         for entry in list {
             guard let id = entry.libraryItemId else { continue }
-            map[id] = ItemProgress(fraction: entry.progress ?? 0, isFinished: entry.isFinished ?? false)
+            map[id] = ItemProgress(fraction: entry.progress ?? 0,
+                                   isFinished: entry.isFinished ?? false,
+                                   lastUpdate: entry.lastUpdate ?? 0)
         }
         progressByItem = map
     }
@@ -367,7 +373,7 @@ final class AppState {
         case .authors: return "Author · \(value)"
         case .narrators: return "Narrator · \(value)"
         case .series: return "Series · \(value)"
-        case .library, .stats: return nil
+        case .library, .stats, .home: return nil
         }
     }
 
@@ -384,6 +390,13 @@ final class AppState {
     func loadStats() async {
         guard let id = selectedLibraryID ?? libraries.first?.id else { return }
         stats = try? await api.libraryStats(libraryID: id)
+    }
+
+    /// Newest-added items for the Home "Recently Added" shelf (server-sorted by
+    /// addedAt, which the default title-sorted `items` fetch can't provide).
+    func loadRecentItems() async {
+        guard let id = selectedLibraryID ?? libraries.first?.id else { return }
+        recentItems = (try? await api.recentlyAdded(libraryID: id, limit: 20)) ?? []
     }
 
     func loadAuthors() async {
@@ -412,7 +425,9 @@ final class AppState {
 
     func reportProgress(itemID: String, currentTime: Double, duration: Double) async {
         let fraction = duration > 0 ? min(1, currentTime / duration) : 0
-        progressByItem[itemID] = ItemProgress(fraction: fraction, isFinished: fraction >= 0.99)
+        progressByItem[itemID] = ItemProgress(fraction: fraction,
+                                              isFinished: fraction >= 0.99,
+                                              lastUpdate: Date().timeIntervalSince1970 * 1000)
         downloads.saveProgress(itemID: itemID, currentTime: currentTime, duration: duration)
 
         do {
