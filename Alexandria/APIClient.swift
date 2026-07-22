@@ -45,10 +45,17 @@ struct APIClient: Sendable {
         do {
             (data, resp) = try await URLSession.shared.data(for: req)
         } catch {
+            #if DEBUG
+            print("[Alexandria] network error for \(req.url?.absoluteString ?? "?"): \(error)")
+            #endif
             throw APIError(message: "Could not reach server. Check the URL and that the server is running.")
         }
         guard let http = resp as? HTTPURLResponse else { throw APIError(message: "No response from server.") }
         guard (200..<300).contains(http.statusCode) else {
+            #if DEBUG
+            let bodyText = String(data: data, encoding: .utf8)?.prefix(400) ?? ""
+            print("[Alexandria] \(req.httpMethod ?? "?") \(req.url?.absoluteString ?? "?") -> \(http.statusCode)\n\(bodyText)")
+            #endif
             if http.statusCode == 401 { throw APIError(message: "Wrong username or password.") }
             throw APIError(message: "Server returned error \(http.statusCode).")
         }
@@ -62,7 +69,8 @@ struct APIClient: Sendable {
     // MARK: Endpoints
 
     func login(username: String, password: String) async throws -> String {
-        let body = try JSONEncoder().encode(["username": username, "password": password])
+        let cleanUser = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = try JSONEncoder().encode(["username": cleanUser, "password": password])
         let req = try request("login", method: "POST", body: body, auth: false)
         let resp = try await send(req, as: LoginResponse.self)
         guard let token = resp.user.token, !token.isEmpty else {
