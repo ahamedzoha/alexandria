@@ -68,8 +68,15 @@ final class AppState {
 
     var activeServer: ServerRef? { servers.first { $0.id == activeServerID } }
     var serverURL: String { activeServer?.url ?? "" }
-    var token: String? { activeServerID.flatMap { Keychain.token(for: $0) } }
+    var token: String? {
+        guard let id = activeServerID else { return nil }
+        return UserDefaults.standard.string(forKey: tokenKey(id))
+    }
     var isLoggedIn: Bool { activeServer != nil && !(token ?? "").isEmpty }
+
+    // Token lives in the app's sandbox container (private to this app). Keychain
+    // needs a signing-team entitlement to work on ad-hoc dev builds, so we defer it.
+    private func tokenKey(_ id: String) -> String { "token_\(id)" }
 
     private var api: APIClient { APIClient(serverURL: serverURL, token: token) }
 
@@ -135,7 +142,7 @@ final class AppState {
             let id = UUID().uuidString
             let trimmedName = name.trimmingCharacters(in: .whitespaces)
             let displayName = trimmedName.isEmpty ? hostName(cleaned) : trimmedName
-            Keychain.setToken(t, for: id)
+            UserDefaults.standard.set(t, forKey: tokenKey(id))
             servers.append(ServerRef(id: id, name: displayName, url: cleaned))
             activeServerID = id
             persistServers()
@@ -157,7 +164,7 @@ final class AppState {
     }
 
     func removeServer(_ id: String) {
-        Keychain.deleteToken(for: id)
+        UserDefaults.standard.removeObject(forKey: tokenKey(id))
         servers.removeAll { $0.id == id }
         if activeServerID == id { activeServerID = servers.first?.id }
         persistServers()
@@ -197,7 +204,7 @@ final class AppState {
            let legacyToken = defaults.string(forKey: "token"),
            !url.isEmpty, !legacyToken.isEmpty {
             let id = UUID().uuidString
-            Keychain.setToken(legacyToken, for: id)
+            UserDefaults.standard.set(legacyToken, forKey: tokenKey(id))
             servers = [ServerRef(id: id, name: hostName(url), url: url)]
             activeServerID = id
             persistServers()
