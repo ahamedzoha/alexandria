@@ -1,45 +1,108 @@
-# Alexandria
+<div align="center">
+  <img src="docs/icon.png" width="120" alt="Alexandria" />
+  <h1>Alexandria</h1>
+  <p><strong>A beautiful, native macOS client for your <a href="https://www.audiobookshelf.org/">audiobookshelf</a> library.</strong></p>
+  <p>
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/ahamedzoha/alexandria?color=8A5CF6&label=release" />
+    <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white" />
+    <img alt="SwiftUI" src="https://img.shields.io/badge/built%20with-SwiftUI-0A84FF?logo=swift&logoColor=white" />
+  </p>
+</div>
 
-A native macOS client for [audiobookshelf](https://www.audiobookshelf.org/), built with SwiftUI.
+<br/>
 
-**Phase 1 (this MVP):** log in to your server, browse a library of covers, open a book, stream playback with a now-playing bar (play/pause, ±15s/30s skip, scrubber, speed 0.75×–3×).
+<div align="center">
+  <img src="docs/screenshots/home.png" width="920" alt="Alexandria — Home" />
+</div>
 
-Planned next: offline downloads, progress sync back to the server, menu-bar mini-player, media keys, bookmarks, sleep timer.
+## Why Alexandria?
 
-## Requirements
+Every audiobookshelf client is iOS-first — Alexandria is built for the Mac. A real
+SwiftUI app with a personal Home, gapless multi-track playback, offline downloads, and
+deep system integration, designed to feel like it shipped with macOS.
 
-- macOS 14 or later
-- Xcode 16 or later (install from the Mac App Store)
-- A running audiobookshelf server you can reach
+## Features
 
-## Run it
+- **Personal Home** — a time-of-day greeting, a library-completion ring, listening
+  stats, a one-tap **Continue**, and shelves for *Continue Listening*, *Discover*,
+  *Listen Again*, and *Recently Added*.
+- **Gapless playback** — full multi-track books via `AVQueuePlayer` with chapters,
+  ±15/30s skip, 0.75–3× speed, and a scrubber.
+- **Controls everywhere** — media keys & Now Playing (with artwork), a **menu-bar
+  mini-player**, and spacebar play/pause.
+- **Offline** — download books for offline listening; progress queues locally and
+  syncs when you reconnect.
+- **Progress sync** — reads/writes `/api/me/progress`, resumes where you left off,
+  and shows finished badges on covers.
+- **Fast search** — a modern results dropdown with keyboard navigation and quick-play,
+  focusable from anywhere with **⌘F**.
+- **Browse & stats** — Authors, Series, Narrators, a full library grid/table with
+  sort & filter, and a Stats dashboard.
+- **Multi-server** — add, switch, and remove servers from the sidebar.
+- **Thoughtful details** — sleep timer, colorful placeholder art, native onboarding,
+  and Reduce-Motion-aware animation throughout.
 
-1. Open `Alexandria.xcodeproj` in Xcode (double-click it).
-2. Top toolbar: scheme = **Alexandria**, destination = **My Mac**.
-3. Press **⌘R** (or the ▶ button).
-4. In the app: enter your server URL (e.g. `http://192.168.1.50:13378`), username, password → **Connect**.
+## Screenshots
 
-If Xcode shows a signing error: select the **Alexandria** target → **Signing & Capabilities** →
-set **Team** to your Apple ID (free) or leave signing to run locally.
+| Home | Library |
+| :--: | :--: |
+| <img src="docs/screenshots/home.png" alt="Home" /> | <img src="docs/screenshots/library.png" alt="Library" /> |
 
-## Project layout
+## Install
 
+### Download (easiest)
+
+1. Grab the latest **`Alexandria-x.y.z.dmg`** from **[Releases »](https://github.com/ahamedzoha/alexandria/releases/latest)**.
+2. Open the DMG and drag **Alexandria** into **Applications**.
+3. First launch (the build is free and **unsigned**, so Gatekeeper warns once):
+   **right-click the app → Open → Open**. Or, in Terminal:
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Alexandria.app
+   ```
+4. Enter your server URL, username, and password.
+
+Requires **macOS 14 or later**.
+
+### Build from source
+
+- **Xcode 26 or later** — the UI adopts macOS 26 *Liquid Glass*, gated with
+  `#available`, so the app still **runs on macOS 14+**.
+- Open `Alexandria.xcodeproj`, pick scheme **Alexandria** / destination **My Mac**,
+  press **⌘R**.
+
+New `.swift` files dropped into `Alexandria/` are picked up automatically (Xcode
+synchronized folders — no project fiddling).
+
+## Releasing
+
+Bump the version (target → General → Version), then tag it:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
 ```
-Alexandria/
-  AlexandriaApp.swift      app entry point
-  Models.swift             Codable types for the ABS API
-  APIClient.swift          async REST calls (login, libraries, items, cover, play)
-  AppState.swift           observable app/session state
-  PlayerEngine.swift       AVPlayer wrapper (playback, seek, speed)
-  Views/                   SwiftUI screens
-Info.plist                 allows plain-http LAN servers (ATS)
-```
 
-New `.swift` files dropped into `Alexandria/` are picked up automatically (Xcode 16
-synchronized folders) — no project fiddling needed.
+A GitHub Action builds the DMG and publishes the release with generated notes. The full
+flow — versioning, the unsigned-install caveat, and the later Developer ID +
+notarization path — lives in **[DISTRIBUTING.md](DISTRIBUTING.md)**.
 
-## Known MVP limitations
+## Tech
 
-- Plays the **first audio track** of an item only (multi-track queueing is next).
-- Auth token is stored in `UserDefaults` — move to Keychain before shipping.
-- No offline/download support yet.
+SwiftUI · Observation · AVFoundation (`AVQueuePlayer`, chapters) · MediaPlayer
+(Now Playing / remote commands) · `async`/`await` REST against the audiobookshelf API.
+macOS 14 deployment target; Liquid Glass adopted behind `#available(macOS 26)`.
+
+## Roadmap
+
+- [ ] Custom app icon polish · podcast support · Handoff
+- [ ] Per-track download progress
+- [ ] Keychain token storage (needs a signing team)
+- [ ] Signed & notarized releases
+
+## Press kit
+
+Logo and screenshots for write-ups live in **[`press-kit/`](press-kit/)**.
+
+---
+
+<sub>Not affiliated with the audiobookshelf project. Built by
+<a href="https://github.com/ahamedzoha">@ahamedzoha</a>.</sub>
