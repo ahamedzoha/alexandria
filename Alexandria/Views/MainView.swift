@@ -67,9 +67,9 @@ struct MainView: View {
     @ViewBuilder private var detailContent: some View {
         switch app.sidebar {
         case .library: LibraryGridView()
-        case .authors: GroupGridView(kind: .authors)
-        case .series: GroupGridView(kind: .series)
-        case .narrators: GroupGridView(kind: .narrators)
+        case .authors: PeopleGridView(kind: .authors)
+        case .series: SeriesGridView()
+        case .narrators: PeopleGridView(kind: .narrators)
         case .stats: StatsView()
         }
     }

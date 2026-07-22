@@ -61,6 +61,7 @@ final class AppState {
     var groupKind: Browse?
     var groupValue: String?
     var stats: LibraryStats?
+    var authors: [AuthorRef] = []
 
     init() {
         loadServers()
@@ -89,8 +90,8 @@ final class AppState {
 
         if let value = groupValue, let kind = groupKind {
             switch kind {
-            case .authors: result = result.filter { $0.author == value }
-            case .narrators: result = result.filter { ($0.narrator ?? "") == value }
+            case .authors: result = result.filter { $0.author.localizedCaseInsensitiveContains(value) }
+            case .narrators: result = result.filter { ($0.narrator ?? "").localizedCaseInsensitiveContains(value) }
             case .series: result = result.filter { $0.seriesBaseName == value }
             case .library, .stats: break
             }
@@ -307,6 +308,21 @@ final class AppState {
     func loadStats() async {
         guard let id = selectedLibraryID ?? libraries.first?.id else { return }
         stats = try? await api.libraryStats(libraryID: id)
+    }
+
+    func loadAuthors() async {
+        guard let id = selectedLibraryID ?? libraries.first?.id else { return }
+        authors = (try? await api.authors(libraryID: id)) ?? []
+    }
+
+    func authorImageURL(authorID: String) -> URL? {
+        api.authorImageURL(authorID: authorID)
+    }
+
+    /// How many library items credit this author (substring match handles
+    /// multi-author strings like "Neil Gaiman, Dirk Maggs").
+    func bookCount(forAuthor name: String) -> Int {
+        items.filter { $0.author.localizedCaseInsensitiveContains(name) }.count
     }
 
     func playSession(itemID: String) async -> PlaybackInfo? {

@@ -102,6 +102,17 @@ struct APIClient: Sendable {
         return try await send(req, as: ItemsResponse.self).results
     }
 
+    func authors(libraryID: String) async throws -> [AuthorRef] {
+        let req = try request("api/libraries/\(libraryID)/authors")
+        return try await send(req, as: AuthorsResponse.self).authors
+    }
+
+    func authorImageURL(authorID: String) -> URL? {
+        var query: [URLQueryItem] = []
+        if let token, !token.isEmpty { query.append(URLQueryItem(name: "token", value: token)) }
+        return try? makeURL("api/authors/\(authorID)/image", query: query)
+    }
+
     func libraryStats(libraryID: String) async throws -> LibraryStats {
         let req = try request("api/libraries/\(libraryID)/stats")
         return try await send(req, as: LibraryStats.self)

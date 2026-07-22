@@ -9,16 +9,24 @@ struct StatsView: View {
     var body: some View {
         ScrollView {
             if let stats {
-                VStack(spacing: 28) {
+                VStack(spacing: 24) {
                     tileRow(stats)
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 320, maximum: 520), spacing: 20)], spacing: 20) {
-                        genresCard(stats)
-                        authorsCard(stats)
-                        longestCard(stats)
-                        largestCard(stats)
+                    // Two independent columns avoid the ragged masonry gaps that an
+                    // adaptive LazyVGrid produces with uneven card heights.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .top, spacing: 20) {
+                            VStack(spacing: 20) { genresCard(stats); largestCard(stats) }
+                            VStack(spacing: 20) { authorsCard(stats); longestCard(stats) }
+                        }
+                        VStack(spacing: 20) {
+                            genresCard(stats); authorsCard(stats)
+                            longestCard(stats); largestCard(stats)
+                        }
                     }
                 }
                 .padding(28)
+                .frame(maxWidth: 1100)
+                .frame(maxWidth: .infinity)
             } else if loading {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 300)
             } else {

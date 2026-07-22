@@ -107,6 +107,18 @@ struct ProgressUpdate: Encodable, Sendable {
     let isFinished: Bool
 }
 
+// MARK: - Authors
+
+struct AuthorsResponse: Decodable, Sendable {
+    let authors: [AuthorRef]
+}
+
+struct AuthorRef: Decodable, Identifiable, Sendable {
+    let id: String
+    let name: String
+    let imagePath: String?
+}
+
 // MARK: - Item detail (expanded)
 
 struct ItemDetail: Decodable, Sendable {
