@@ -52,6 +52,9 @@ struct MainView: View {
                         .help("Grid or list view")
                     }
                 }
+                ToolbarItem(placement: .principal) {
+                    Spacer()   // center anchor so primary actions stay trailing
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Picker("Sort by", selection: $app.sort) {
