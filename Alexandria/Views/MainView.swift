@@ -33,8 +33,9 @@ struct MainView: View {
             .safeAreaInset(edge: .bottom) { serverSwitcher }
         } detail: {
             VStack(spacing: 0) {
-                if app.sidebar == .library, let label = app.groupLabel {
-                    groupChip(label)
+                if app.sidebar == .library {
+                    searchBar
+                    if let label = app.groupLabel { groupChip(label) }
                 }
                 detailContent
                 NowPlayingBar()
@@ -50,9 +51,6 @@ struct MainView: View {
                         .pickerStyle(.segmented)
                         .help("Grid or list view")
                     }
-                }
-                ToolbarItem(placement: .principal) {
-                    searchField
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
@@ -122,7 +120,7 @@ struct MainView: View {
         .background(.bar)
     }
 
-    private var searchField: some View {
+    private var searchBar: some View {
         @Bindable var app = app
         return HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
@@ -138,7 +136,14 @@ struct MainView: View {
             }
         }
         .font(.body)
-        .frame(minWidth: 240, idealWidth: 360, maxWidth: .infinity)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .frame(maxWidth: 460)
+        .background(.quaternary.opacity(0.6), in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.hairline))
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 10)
     }
 
     private var serverSwitcher: some View {
