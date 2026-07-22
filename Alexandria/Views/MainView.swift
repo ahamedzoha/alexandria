@@ -138,7 +138,7 @@ struct MainView: View {
             }
         }
         .font(.body)
-        .frame(width: 300)
+        .frame(minWidth: 240, idealWidth: 360, maxWidth: .infinity)
     }
 
     private var serverSwitcher: some View {
