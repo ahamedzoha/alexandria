@@ -10,8 +10,12 @@ enum SidebarSelection: Hashable {
 
 struct MainView: View {
     @Environment(AppState.self) private var app
+    @Environment(PlayerEngine.self) private var player
     @State private var showAddServer = false
     @State private var searchSelection: LibraryItem?
+    @State private var highlightedIndex = 0
+    @State private var searchFocusTrigger = 0
+    @State private var searchBlurTrigger = 0
 
     var body: some View {
         @Bindable var app = app
@@ -40,8 +44,17 @@ struct MainView: View {
                 detailContent
                 NowPlayingBar()
             }
-            .overlay { searchOverlay }
-            .animation(.easeInOut(duration: 0.16), value: showSearchDropdown)
+            .overlay {
+                // Scope the fade to the overlay only — animating the whole
+                // detail made the grid behind it jump on show/hide.
+                searchOverlay
+                    .animation(.easeOut(duration: 0.14), value: showSearchDropdown)
+            }
+            .onChange(of: app.focusSearchRequested) {
+                guard app.focusSearchRequested else { return }
+                app.focusSearchRequested = false
+                searchFocusTrigger += 1
+            }
             .navigationTitle(currentTitle)
             .toolbar {
                 if app.sidebar == .library {
@@ -112,13 +125,18 @@ struct MainView: View {
                 Color.primary.opacity(0.04)
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
-                    .onTapGesture { app.searchText = "" }
+                    .onTapGesture { clearSearch() }
 
                 SearchDropdown(
                     matches: app.searchMatches,
+                    highlighted: clampedHighlight,
                     onSelect: { item in
                         searchSelection = item
-                        app.searchText = ""
+                        clearSearch()
+                    },
+                    onPlay: { item in
+                        playItem(item)
+                        clearSearch()
                     },
                     onShowAll: {
                         app.sidebar = .library
@@ -162,23 +180,110 @@ struct MainView: View {
     }
 
     private var searchField: some View {
-        @Bindable var app = app
-        return HStack(spacing: 7) {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            TextField("Search books", text: $app.searchText)
-                .textFieldStyle(.plain)
-            if !app.searchText.isEmpty {
-                Button { app.searchText = "" } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                .font(.system(size: 13))
+            SearchField(
+                text: Binding(get: { app.searchText }, set: { app.searchText = $0 }),
+                placeholder: "Search books",
+                focusTrigger: searchFocusTrigger,
+                blurTrigger: searchBlurTrigger,
+                onMoveDown: { moveHighlight(1) },
+                onMoveUp: { moveHighlight(-1) },
+                onSubmit: { playHighlighted() },
+                onCancel: { cancelSearch() }
+            )
+            .frame(maxWidth: .infinity)
+
+            if app.searchText.isEmpty {
+                shortcutHint
+            } else {
+                Button { clearSearch() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
-                .help("Clear search")
+                .help("Clear search (esc)")
             }
         }
         .font(.body)
-        .padding(.horizontal, 6)
         .frame(minWidth: 320, idealWidth: 460, maxWidth: 620)
+        .padding(.horizontal, 14)
+        .onChange(of: app.searchText) { highlightedIndex = 0 }
+    }
+
+    private var shortcutHint: some View {
+        Text("⌘F")
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .help("Press ⌘F to search")
+    }
+
+    // MARK: Search dropdown keyboard nav
+
+    private var navigableMatches: [LibraryItem] {
+        Array(app.searchMatches.prefix(SearchDropdown.maxRows))
+    }
+
+    /// Highlight clamped to the current match count, so a stale index (e.g. the
+    /// query shrank the list) can never point past the end.
+    private var clampedHighlight: Int {
+        let count = navigableMatches.count
+        guard count > 0 else { return 0 }
+        return min(max(highlightedIndex, 0), count - 1)
+    }
+
+    /// Returns true when the key was consumed (dropdown open + a move happened).
+    private func moveHighlight(_ delta: Int) -> Bool {
+        guard showSearchDropdown, !navigableMatches.isEmpty else { return false }
+        highlightedIndex = min(max(highlightedIndex + delta, 0), navigableMatches.count - 1)
+        return true
+    }
+
+    /// ↵ quick-plays the highlighted result (row click still opens detail).
+    private func playHighlighted() -> Bool {
+        guard showSearchDropdown, !navigableMatches.isEmpty else { return false }
+        playItem(navigableMatches[clampedHighlight])
+        clearSearch()
+        return true
+    }
+
+    private func cancelSearch() -> Bool {
+        if app.searchText.isEmpty {
+            searchBlurTrigger += 1   // already empty — just defocus
+        } else {
+            clearSearch()            // clear text + defocus
+        }
+        return true
+    }
+
+    private func clearSearch() {
+        app.searchText = ""
+        highlightedIndex = 0
+        // Resign the search field so a bare Space resumes play/pause control.
+        searchBlurTrigger += 1
+    }
+
+    /// Quick-play a book straight from the search dropdown (prefers a local
+    /// download, else a server session), mirroring the library grid.
+    private func playItem(_ item: LibraryItem) {
+        Task {
+            let local = app.downloads.localSession(for: item.id)
+            let info: PlaybackInfo?
+            let cover: URL?
+            if let local {
+                info = local
+                cover = app.downloads.localCoverURL(item.id)
+            } else {
+                info = await app.playSession(itemID: item.id)
+                cover = app.coverURL(itemID: item.id)
+            }
+            if let info {
+                player.load(session: info, itemID: item.id, serverURL: app.serverURL,
+                            token: app.token, title: item.title, author: item.author, cover: cover)
+            }
+        }
     }
 
     private var serverSwitcher: some View {

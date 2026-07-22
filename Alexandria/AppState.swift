@@ -64,6 +64,8 @@ final class AppState {
 
     // Search / sort / filter / browse
     var searchText = ""
+    // Toggled by the Find (⌘F) menu command; MainView focuses the field.
+    var focusSearchRequested = false
     var sort: LibrarySort = .title
     var sortAscending = true
     var filter: LibraryFilter = .all

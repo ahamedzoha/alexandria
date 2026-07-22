@@ -14,6 +14,10 @@ struct AlexandriaApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(after: .textEditing) {
+                Button("Find") { app.focusSearchRequested = true }
+                    .keyboardShortcut("f", modifiers: .command)
+            }
             CommandMenu("Playback") {
                 Button(player.isPlaying ? "Pause" : "Play") { player.toggle() }
                 Divider()
