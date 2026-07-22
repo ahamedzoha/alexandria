@@ -29,6 +29,14 @@ struct RootView: View {
                 await app.loadLibraries()
                 await app.flushPendingProgress()   // drain any offline-queued progress
             }
+            // Keep progress fresh from other devices while the app stays open.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(20))
+                if app.isLoggedIn { await app.syncNow() }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if app.isLoggedIn { Task { await app.syncNow() } }
         }
     }
 

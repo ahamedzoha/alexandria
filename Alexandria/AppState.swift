@@ -58,6 +58,10 @@ final class AppState {
     var isLoading = false
     var errorMessage: String?
 
+    // Sync (pull progress from the server so other devices reflect quickly)
+    var isSyncing = false
+    var lastSyncedAt: Date?
+
     // Search / sort / filter / browse
     var searchText = ""
     var sort: LibrarySort = .title
@@ -280,6 +284,27 @@ final class AppState {
         } catch {
             errorMessage = friendly(error)
         }
+    }
+
+    /// Pull latest progress from the server + flush any queued local progress.
+    func syncNow() async {
+        guard isLoggedIn, !isSyncing else { return }
+        isSyncing = true
+        await downloads.flushPending(api: api)
+        await loadProgress()
+        lastSyncedAt = Date()
+        isSyncing = false
+    }
+
+    var syncStatusText: String {
+        if isSyncing { return "Syncing…" }
+        guard let date = lastSyncedAt else { return "Not synced yet" }
+        let secs = Int(Date().timeIntervalSince(date))
+        if secs < 5 { return "Synced just now" }
+        if secs < 60 { return "Synced \(secs)s ago" }
+        let mins = secs / 60
+        if mins < 60 { return "Synced \(mins)m ago" }
+        return "Synced \(mins / 60)h ago"
     }
 
     func loadProgress() async {

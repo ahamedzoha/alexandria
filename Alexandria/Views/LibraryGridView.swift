@@ -46,12 +46,10 @@ struct LibraryGridView: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 26) {
                 ForEach(app.visibleItems) { item in
-                    Button { selected = item } label: {
-                        CoverCell(item: item)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(item.title) by \(item.author)")
-                    .contextMenu { contextMenu(item) }
+                    CoverCell(item: item,
+                              onOpen: { selected = item },
+                              onPlay: { playItem(item) })
+                        .contextMenu { contextMenu(item) }
                 }
             }
             .padding(28)
@@ -134,23 +132,55 @@ struct LibraryGridView: View {
 struct CoverCell: View {
     @Environment(AppState.self) private var app
     let item: LibraryItem
+    let onOpen: () -> Void
+    let onPlay: () -> Void
+    @State private var hovering = false
 
     private var progress: AppState.ItemProgress? { app.progressByItem[item.id] }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CoverArt(url: app.coverURL(itemID: item.id), title: item.title)
-                .aspectRatio(1, contentMode: .fit)
-                .overlay(alignment: .bottom) { progressBar }
-                .overlay { finishedScrim }
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous)
-                        .strokeBorder(Theme.hairline, lineWidth: 1)
+            ZStack {
+                Button(action: onOpen) {
+                    CoverArt(url: app.coverURL(itemID: item.id), title: item.title)
+                        .aspectRatio(1, contentMode: .fit)
+                        .overlay(alignment: .bottom) { progressBar }
+                        .overlay { finishedScrim }
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous)
+                                .strokeBorder(Theme.hairline, lineWidth: 1)
+                        }
+                        .overlay(alignment: .topTrailing) { finishedBadge }
+                        .overlay(alignment: .topLeading) { downloadBadge }
                 }
-                .overlay(alignment: .topTrailing) { finishedBadge }
-                .overlay(alignment: .topLeading) { downloadBadge }
-                .hoverLift(cornerRadius: Theme.Radius.cover)
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(item.title) by \(item.author)")
+
+                if hovering {
+                    RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous)
+                        .fill(.black.opacity(0.38))
+                        .allowsHitTesting(false)      // clicks pass through to the details button
+                        .transition(.opacity)
+
+                    Button(action: onPlay) {
+                        Image(systemName: "play.fill")
+                            .font(.title2)
+                            .foregroundStyle(.white)
+                            .frame(width: 54, height: 54)
+                            .background(.black.opacity(0.55), in: Circle())
+                            .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1.5))
+                            .shadow(radius: 6)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Play")
+                    .accessibilityLabel("Play \(item.title)")
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .hoverLift(cornerRadius: Theme.Radius.cover)
+            .onHover { hovering = $0 }
+            .animation(.easeOut(duration: 0.15), value: hovering)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
@@ -161,6 +191,9 @@ struct CoverCell: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onOpen)
         }
     }
 

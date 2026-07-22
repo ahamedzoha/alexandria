@@ -72,6 +72,17 @@ struct MainView: View {
                     }
                     .help("Sort and filter")
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { Task { await app.syncNow() } } label: {
+                        if app.isSyncing {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                        }
+                    }
+                    .help(app.syncStatusText)
+                    .disabled(app.isSyncing)
+                }
             }
         }
         .sheet(isPresented: $showAddServer) {
