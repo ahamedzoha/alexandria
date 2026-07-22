@@ -163,13 +163,11 @@ struct MainView: View {
 
     private var searchField: some View {
         @Bindable var app = app
-        return HStack(spacing: 6) {
-            Spacer(minLength: 0)
+        return HStack(spacing: 7) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
             TextField("Search books", text: $app.searchText)
                 .textFieldStyle(.plain)
-                .frame(width: 260)
             if !app.searchText.isEmpty {
                 Button { app.searchText = "" } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
@@ -177,10 +175,10 @@ struct MainView: View {
                 .buttonStyle(.plain)
                 .help("Clear search")
             }
-            Spacer(minLength: 0)
         }
         .font(.body)
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 6)
+        .frame(minWidth: 320, idealWidth: 460, maxWidth: 620)
     }
 
     private var serverSwitcher: some View {
