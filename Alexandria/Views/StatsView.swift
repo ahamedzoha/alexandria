@@ -5,6 +5,7 @@ struct StatsView: View {
     @Environment(AppState.self) private var app
     @State private var loading = true
     @State private var appear = false
+    @State private var selectedItem: LibraryItem?
 
     private var stats: LibraryStats? { app.stats }
 
@@ -45,6 +46,9 @@ struct StatsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(item: $selectedItem) { item in
+            ItemDetailView(item: item).frame(width: 560, height: 680)
+        }
         .task {
             loading = true
             await app.loadStats()
@@ -134,7 +138,7 @@ struct StatsView: View {
         let genres = Array((s.genresWithCount ?? []).sorted { $0.value > $1.value }.prefix(6))
         let top = genres.first
         let total = Double(genres.reduce(0) { $0 + $1.value })
-        return card("Top Genres", icon: "theatermasks") {
+        return card("Top Genres", icon: "theatermasks", fillHeight: true) {
             HStack(spacing: 18) {
                 ZStack {
                     Chart(Array(genres.enumerated()), id: \.offset) { index, g in
@@ -172,7 +176,7 @@ struct StatsView: View {
     private func authorsCard(_ s: LibraryStats) -> some View {
         let authors = Array((s.authorsWithCount ?? []).sorted { $0.value > $1.value }.prefix(8))
         let maxVal = Double(authors.map(\.value).max() ?? 1)
-        return card("Top Authors", icon: "person.3") {
+        return card("Top Authors", icon: "person.3", fillHeight: true) {
             VStack(spacing: 10) {
                 ForEach(Array(authors.enumerated()), id: \.offset) { index, a in
                     AuthorBar(rank: index + 1, name: a.label, value: a.value,
@@ -190,23 +194,15 @@ struct StatsView: View {
         card(title, icon: systemImage) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 16) {
-                    ForEach(Array(items.prefix(8).enumerated()), id: \.offset) { _, item in
-                        VStack(alignment: .leading, spacing: 6) {
-                            RemoteImage(url: item.id.flatMap { app.coverURL(itemID: $0) }) { image in
-                                image.resizable().aspectRatio(contentMode: .fill)
-                            } fallback: {
-                                RoundedRectangle(cornerRadius: 8).fill(.quaternary)
+                    ForEach(Array(items.prefix(10).enumerated()), id: \.offset) { _, item in
+                        SpotlightCoverCard(
+                            coverURL: item.id.flatMap { app.coverURL(itemID: $0) },
+                            title: item.title ?? "—",
+                            value: value(item)
+                        ) {
+                            if let match = app.items.first(where: { $0.id == item.id }) {
+                                selectedItem = match
                             }
-                            .frame(width: 96, height: 96)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(alignment: .bottomTrailing) {
-                                Text(value(item))
-                                    .font(.caption2.weight(.bold)).foregroundStyle(.white)
-                                    .padding(.horizontal, 6).padding(.vertical, 3)
-                                    .background(.black.opacity(0.65), in: Capsule())
-                                    .padding(6)
-                            }
-                            Text(item.title ?? "—").font(.caption).lineLimit(1).frame(width: 96, alignment: .leading)
                         }
                     }
                 }
@@ -217,15 +213,16 @@ struct StatsView: View {
 
     // MARK: Card shell
 
-    private func card<Content: View>(_ title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+    private func card<Content: View>(_ title: String, icon: String, fillHeight: Bool = false,
+                                     @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Label(title, systemImage: icon)
                 .font(.title3.bold())
                 .labelStyle(.titleAndIcon)
             content()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: fillHeight ? .infinity : nil, alignment: .topLeading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.06)))
     }
@@ -235,6 +232,44 @@ struct StatsView: View {
     private func gb(_ bytes: Double?) -> String {
         guard let bytes else { return "0" }
         return String(format: "%.1f", bytes / 1_073_741_824)
+    }
+}
+
+// MARK: - Spotlight cover (clickable)
+
+private struct SpotlightCoverCard: View {
+    let coverURL: URL?
+    let title: String
+    let value: String
+    let onTap: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            RemoteImage(url: coverURL) { image in
+                image.resizable().aspectRatio(contentMode: .fill)
+            } fallback: {
+                RoundedRectangle(cornerRadius: 8).fill(.quaternary)
+            }
+            .frame(width: 100, height: 100)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(alignment: .bottomTrailing) {
+                Text(value)
+                    .font(.caption2.weight(.bold)).foregroundStyle(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(.black.opacity(0.7), in: Capsule())
+                    .padding(6)
+            }
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(0.1)))
+            .shadow(color: .black.opacity(hovering ? 0.5 : 0.3), radius: hovering ? 10 : 5, y: hovering ? 6 : 3)
+            .scaleEffect(hovering ? 1.05 : 1)
+            .animation(.easeOut(duration: 0.15), value: hovering)
+
+            Text(title).font(.caption).lineLimit(1).frame(width: 100, alignment: .leading)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
+        .onHover { hovering = $0 }
     }
 }
 
