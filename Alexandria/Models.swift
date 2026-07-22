@@ -142,6 +142,37 @@ struct ItemDetail: Decodable, Sendable {
     }
 }
 
+// MARK: - Library stats
+
+struct LibraryStats: Decodable, Sendable {
+    let totalItems: Int?
+    let totalAuthors: Int?
+    let totalGenres: Int?
+    let totalDuration: Double?
+    let totalSize: Double?
+    let numAudioTracks: Int?
+    let longestItems: [StatItem]?
+    let largestItems: [StatItem]?
+    let authorsWithCount: [StatCount]?
+    let genresWithCount: [StatCount]?
+
+    struct StatItem: Decodable, Sendable {
+        let id: String?
+        let title: String?
+        let duration: Double?
+        let size: Double?
+    }
+
+    struct StatCount: Decodable, Sendable {
+        let name: String?
+        let genre: String?
+        let count: Int?
+        let numBooks: Int?
+        var label: String { name ?? genre ?? "—" }
+        var value: Int { count ?? numBooks ?? 0 }
+    }
+}
+
 // MARK: - Me / progress
 
 struct MeResponse: Decodable, Sendable {

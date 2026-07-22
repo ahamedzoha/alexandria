@@ -37,6 +37,7 @@ final class AppState {
         case authors
         case series
         case narrators
+        case stats
     }
 
     // Servers (tokens live in the Keychain, keyed by server id)
@@ -59,6 +60,7 @@ final class AppState {
     var sidebar: Browse = .library
     var groupKind: Browse?
     var groupValue: String?
+    var stats: LibraryStats?
 
     init() {
         loadServers()
@@ -90,7 +92,7 @@ final class AppState {
             case .authors: result = result.filter { $0.author == value }
             case .narrators: result = result.filter { ($0.narrator ?? "") == value }
             case .series: result = result.filter { $0.seriesBaseName == value }
-            case .library: break
+            case .library, .stats: break
             }
         }
 
@@ -288,7 +290,7 @@ final class AppState {
         case .authors: return "Author · \(value)"
         case .narrators: return "Narrator · \(value)"
         case .series: return "Series · \(value)"
-        case .library: return nil
+        case .library, .stats: return nil
         }
     }
 
@@ -300,6 +302,11 @@ final class AppState {
 
     func itemDetail(itemID: String) async -> ItemDetail? {
         try? await api.itemDetail(itemID: itemID)
+    }
+
+    func loadStats() async {
+        guard let id = selectedLibraryID ?? libraries.first?.id else { return }
+        stats = try? await api.libraryStats(libraryID: id)
     }
 
     func playSession(itemID: String) async -> PlaybackInfo? {

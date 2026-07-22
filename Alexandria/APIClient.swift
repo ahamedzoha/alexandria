@@ -102,6 +102,11 @@ struct APIClient: Sendable {
         return try await send(req, as: ItemsResponse.self).results
     }
 
+    func libraryStats(libraryID: String) async throws -> LibraryStats {
+        let req = try request("api/libraries/\(libraryID)/stats")
+        return try await send(req, as: LibraryStats.self)
+    }
+
     func itemDetail(itemID: String) async throws -> ItemDetail {
         var req = try request("api/items/\(itemID)")
         if let url = req.url, var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {

@@ -5,6 +5,7 @@ enum SidebarSelection: Hashable {
     case authors
     case series
     case narrators
+    case stats
 }
 
 struct MainView: View {
@@ -25,6 +26,7 @@ struct MainView: View {
                     Label("Authors", systemImage: "person").tag(SidebarSelection.authors)
                     Label("Series", systemImage: "books.vertical").tag(SidebarSelection.series)
                     Label("Narrators", systemImage: "mic").tag(SidebarSelection.narrators)
+                    Label("Stats", systemImage: "chart.bar").tag(SidebarSelection.stats)
                 }
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 320)
@@ -65,9 +67,10 @@ struct MainView: View {
     @ViewBuilder private var detailContent: some View {
         switch app.sidebar {
         case .library: LibraryGridView()
-        case .authors: GroupListView(kind: .authors)
-        case .series: GroupListView(kind: .series)
-        case .narrators: GroupListView(kind: .narrators)
+        case .authors: GroupGridView(kind: .authors)
+        case .series: GroupGridView(kind: .series)
+        case .narrators: GroupGridView(kind: .narrators)
+        case .stats: StatsView()
         }
     }
 
@@ -124,6 +127,7 @@ struct MainView: View {
                 case .authors: return .authors
                 case .series: return .series
                 case .narrators: return .narrators
+                case .stats: return .stats
                 }
             },
             set: { selection in
@@ -136,6 +140,7 @@ struct MainView: View {
                 case .authors: app.sidebar = .authors
                 case .series: app.sidebar = .series
                 case .narrators: app.sidebar = .narrators
+                case .stats: app.sidebar = .stats
                 }
             }
         )
@@ -148,6 +153,7 @@ struct MainView: View {
         case .authors: return "Authors"
         case .series: return "Series"
         case .narrators: return "Narrators"
+        case .stats: return "Stats"
         }
     }
 
