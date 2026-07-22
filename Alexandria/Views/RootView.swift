@@ -31,7 +31,7 @@ struct RootView: View {
             }
             // Keep progress fresh from other devices while the app stays open.
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(20))
+                try? await Task.sleep(for: .seconds(45))
                 if app.isLoggedIn { await app.syncNow() }
             }
         }

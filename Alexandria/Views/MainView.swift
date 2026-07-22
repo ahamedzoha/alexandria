@@ -139,9 +139,6 @@ struct MainView: View {
         }
         .font(.body)
         .frame(width: 300)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(.quaternary, in: Capsule())
     }
 
     private var serverSwitcher: some View {
