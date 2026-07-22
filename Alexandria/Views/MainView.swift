@@ -116,10 +116,8 @@ struct MainView: View {
         return HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-                .font(.callout)
             TextField("Search books", text: $app.searchText)
                 .textFieldStyle(.plain)
-                .frame(width: 260)
             if !app.searchText.isEmpty {
                 Button { app.searchText = "" } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
@@ -128,10 +126,11 @@ struct MainView: View {
                 .help("Clear search")
             }
         }
+        .font(.body)
+        .frame(width: 300)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(.quaternary.opacity(0.5), in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.hairline))
+        .background(.quaternary, in: Capsule())
     }
 
     private var serverSwitcher: some View {
