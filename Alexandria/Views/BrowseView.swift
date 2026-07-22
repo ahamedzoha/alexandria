@@ -5,7 +5,7 @@ import SwiftUI
 struct SeriesGridView: View {
     @Environment(AppState.self) private var app
 
-    private let columns = [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 26)]
+    private let columns = [GridItem(.adaptive(minimum: 200, maximum: 240), spacing: 28)]
 
     private struct SeriesGroup: Identifiable {
         let id: String
@@ -74,7 +74,7 @@ struct SeriesCard: View {
                     cover(first).zIndex(1)
                 }
             }
-            .frame(height: 168)
+            .frame(height: 210)
             .hoverLift(cornerRadius: 8)
 
             HStack(spacing: 6) {
@@ -94,10 +94,10 @@ struct SeriesCard: View {
         } fallback: {
             RoundedRectangle(cornerRadius: 8).fill(.quaternary)
         }
-        .frame(width: 118, height: 118)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(0.1)))
-        .shadow(color: .black.opacity(0.35), radius: 5, y: 3)
+        .frame(width: 160, height: 160)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
+        .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
     }
 }
 
