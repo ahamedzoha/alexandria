@@ -32,28 +32,39 @@ struct NowPlayingBar: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(player.chapters.isEmpty)
+                .help("Previous Chapter")
+                .accessibilityLabel("Previous Chapter")
 
                 Button { player.skip(-15) } label: {
                     Image(systemName: "gobackward.15")
                 }
                 .buttonStyle(.plain)
+                .help("Skip Back 15 Seconds")
+                .accessibilityLabel("Skip Back 15 Seconds")
 
                 Button { player.toggle() } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.title2)
+                        .contentTransition(.symbolEffect(.replace))
                 }
                 .buttonStyle(.plain)
+                .help(player.isPlaying ? "Pause" : "Play")
+                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
 
                 Button { player.skip(30) } label: {
                     Image(systemName: "goforward.30")
                 }
                 .buttonStyle(.plain)
+                .help("Skip Forward 30 Seconds")
+                .accessibilityLabel("Skip Forward 30 Seconds")
 
                 Button { player.nextChapter() } label: {
                     Image(systemName: "forward.end.fill")
                 }
                 .buttonStyle(.plain)
                 .disabled(player.chapters.isEmpty)
+                .help("Next Chapter")
+                .accessibilityLabel("Next Chapter")
 
                 Slider(
                     value: Binding(
@@ -84,6 +95,7 @@ struct NowPlayingBar: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .background(.bar)
+            .overlay(alignment: .top) { Divider() }
         }
     }
 
@@ -101,6 +113,7 @@ struct NowPlayingBar: View {
         } label: {
             HStack(spacing: 3) {
                 Image(systemName: player.isSleepArmed ? "moon.fill" : "moon")
+                    .symbolEffect(.pulse, isActive: player.isSleepArmed)
                 if let remaining = player.sleepRemainingSeconds {
                     Text(sleepLabel(remaining)).font(.caption2.monospacedDigit())
                 }

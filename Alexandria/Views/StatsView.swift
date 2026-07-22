@@ -245,34 +245,32 @@ private struct SpotlightCoverCard: View {
     let title: String
     let value: String
     let onTap: () -> Void
-    @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            RemoteImage(url: coverURL) { image in
-                image.resizable().aspectRatio(contentMode: .fill)
-            } fallback: {
-                RoundedRectangle(cornerRadius: 8).fill(.quaternary)
-            }
-            .frame(width: 100, height: 100)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(alignment: .bottomTrailing) {
-                Text(value)
-                    .font(.caption2.weight(.bold)).foregroundStyle(.white)
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background(.black.opacity(0.7), in: Capsule())
-                    .padding(6)
-            }
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(0.1)))
-            .shadow(color: .black.opacity(hovering ? 0.5 : 0.3), radius: hovering ? 10 : 5, y: hovering ? 6 : 3)
-            .scaleEffect(hovering ? 1.05 : 1)
-            .animation(.easeOut(duration: 0.15), value: hovering)
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 6) {
+                RemoteImage(url: coverURL) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } fallback: {
+                    RoundedRectangle(cornerRadius: Theme.Radius.cover).fill(.quaternary)
+                }
+                .frame(width: 100, height: 100)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    Text(value)
+                        .font(.caption2.weight(.bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(.black.opacity(0.7), in: Capsule())
+                        .padding(6)
+                }
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous).strokeBorder(Theme.hairline))
+                .hoverLift(cornerRadius: Theme.Radius.cover)
 
-            Text(title).font(.caption).lineLimit(1).frame(width: 100, alignment: .leading)
+                Text(title).font(.caption).lineLimit(1).frame(width: 100, alignment: .leading)
+            }
         }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
-        .onHover { hovering = $0 }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title), \(value)")
     }
 }
 
@@ -288,41 +286,51 @@ private struct AuthorBar: View {
     @State private var hovering = false
 
     var body: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 8) {
-                Text(medal).font(.callout).frame(width: 24, alignment: .leading)
-                Text(name).font(.callout.weight(hovering ? .semibold : .regular)).lineLimit(1)
-                Image(systemName: "chevron.right")
-                    .font(.caption2).foregroundStyle(.secondary)
-                    .opacity(hovering ? 1 : 0)
-                Spacer(minLength: 4)
-                Text("\(value)").font(.callout.monospacedDigit().weight(.bold)).foregroundStyle(.secondary)
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.1))
-                    Capsule()
-                        .fill(LinearGradient(colors: barColors, startPoint: .leading, endPoint: .trailing))
-                        .frame(width: animate ? max(4, geo.size.width * fraction) : 0)
+        Button(action: onTap) {
+            VStack(spacing: 4) {
+                HStack(spacing: 8) {
+                    rankView.frame(width: 24, alignment: .leading)
+                    Text(name).font(.callout.weight(hovering ? .semibold : .regular)).lineLimit(1)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2).foregroundStyle(.secondary)
+                        .opacity(hovering ? 1 : 0)
+                    Spacer(minLength: 4)
+                    Text("\(value)").font(.callout.monospacedDigit().weight(.bold)).foregroundStyle(.secondary)
                 }
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(.primary.opacity(0.1))
+                        Capsule()
+                            .fill(LinearGradient(colors: barColors, startPoint: .leading, endPoint: .trailing))
+                            .frame(width: animate ? max(4, geo.size.width * fraction) : 0)
+                    }
+                }
+                .frame(height: 8)
             }
-            .frame(height: 8)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(hovering ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 8).padding(.vertical, 4)
-        .background(hovering ? Color.white.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 8))
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(name), \(value) books")
         .onHover { hovering = $0 }
         .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(Double(rank) * 0.05), value: animate)
     }
 
-    private var medal: String {
+    @ViewBuilder private var rankView: some View {
         switch rank {
-        case 1: return "🥇"
-        case 2: return "🥈"
-        case 3: return "🥉"
-        default: return "\(rank)"
+        case 1: medal(.yellow)
+        case 2: medal(Color(white: 0.75))
+        case 3: medal(.brown)
+        default: Text("\(rank)").font(.callout.weight(.semibold)).foregroundStyle(.secondary)
         }
+    }
+
+    private func medal(_ color: Color) -> some View {
+        Image(systemName: "medal.fill")
+            .font(.callout)
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(.white, color)
     }
 
     private var barColors: [Color] {

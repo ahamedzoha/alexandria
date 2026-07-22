@@ -58,7 +58,7 @@ final class ImageLoader {
                 if let image = NSImage(data: data) {
                     CoverCache.shared.setObject(image, forKey: key)
                     loadedURL = url
-                    state = .loaded(image)
+                    withAnimation(.easeOut(duration: 0.25)) { state = .loaded(image) }
                     return
                 }
             } catch {
@@ -91,6 +91,7 @@ struct RemoteImage<Success: View, Fallback: View>: View {
                 .overlay(ProgressView().controlSize(.small))
         case .loaded(let nsImage):
             success(Image(nsImage: nsImage))
+                .transition(.opacity)
         case .failed:
             fallback()
         }

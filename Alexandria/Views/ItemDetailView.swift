@@ -31,7 +31,6 @@ struct ItemDetailView: View {
         }
         .background(background)
         .overlay(alignment: .topTrailing) { closeButton }
-        .environment(\.colorScheme, .dark)
         .task { detail = await app.itemDetail(itemID: item.id) }
     }
 
@@ -299,9 +298,11 @@ struct ItemDetailView: View {
                 .font(.callout.weight(.bold))
                 .foregroundStyle(.white.opacity(0.9))
                 .padding(8)
-                .background(.ultraThinMaterial, in: Circle())
+                .navGlassCircle()
         }
         .buttonStyle(.plain)
+        .keyboardShortcut(.cancelAction)
+        .help("Close")
         .padding(14)
     }
 

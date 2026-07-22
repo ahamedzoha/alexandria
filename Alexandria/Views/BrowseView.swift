@@ -26,16 +26,22 @@ struct SeriesGridView: View {
 
     var body: some View {
         Group {
-            if groups.isEmpty {
-                ContentUnavailableView("No series", systemImage: "books.vertical",
+            if app.isLoading && app.items.isEmpty {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if groups.isEmpty {
+                ContentUnavailableView("No Series", systemImage: "books.vertical",
                                        description: Text("No series found in this library."))
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 28) {
                         ForEach(groups) { group in
-                            SeriesCard(name: group.name, count: group.count, coverIDs: group.coverItemIDs)
-                                .contentShape(Rectangle())
-                                .onTapGesture { app.showGroup(kind: .series, value: group.name) }
+                            Button {
+                                app.showGroup(kind: .series, value: group.name)
+                            } label: {
+                                SeriesCard(name: group.name, count: group.count, coverIDs: group.coverItemIDs)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(group.name), \(group.count) books")
                         }
                     }
                     .padding(28)
@@ -51,7 +57,6 @@ struct SeriesCard: View {
     let name: String
     let count: Int
     let coverIDs: [String]
-    @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -70,9 +75,7 @@ struct SeriesCard: View {
                 }
             }
             .frame(height: 168)
-            .scaleEffect(hovering ? 1.03 : 1)
-            .animation(.easeOut(duration: 0.15), value: hovering)
-            .onHover { hovering = $0 }
+            .hoverLift(cornerRadius: 8)
 
             HStack(spacing: 6) {
                 VStack(alignment: .leading, spacing: 1) {
@@ -133,16 +136,22 @@ struct PeopleGridView: View {
 
     var body: some View {
         Group {
-            if people.isEmpty {
-                ContentUnavailableView("Nothing here", systemImage: kind == .authors ? "person" : "mic",
+            if app.isLoading && app.items.isEmpty {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if people.isEmpty {
+                ContentUnavailableView("Nothing Here", systemImage: kind == .authors ? "person" : "mic",
                                        description: Text("No entries found in this library."))
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 24) {
                         ForEach(people) { person in
-                            PersonCard(name: person.name, count: person.count, imageURL: person.imageURL)
-                                .contentShape(Rectangle())
-                                .onTapGesture { app.showGroup(kind: kind, value: person.name) }
+                            Button {
+                                app.showGroup(kind: kind, value: person.name)
+                            } label: {
+                                PersonCard(name: person.name, count: person.count, imageURL: person.imageURL)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(person.name), \(person.count) books")
                         }
                     }
                     .padding(28)
@@ -158,18 +167,14 @@ struct PersonCard: View {
     let name: String
     let count: Int
     let imageURL: URL?
-    @State private var hovering = false
 
     var body: some View {
         VStack(spacing: 10) {
             avatar
                 .frame(width: 108, height: 108)
                 .clipShape(Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(0.12), lineWidth: 1))
-                .shadow(color: .black.opacity(hovering ? 0.45 : 0.25), radius: hovering ? 10 : 5, y: hovering ? 6 : 3)
-                .scaleEffect(hovering ? 1.05 : 1)
-                .animation(.easeOut(duration: 0.15), value: hovering)
-                .onHover { hovering = $0 }
+                .overlay(Circle().strokeBorder(Theme.hairline, lineWidth: 1))
+                .hoverLift()
 
             VStack(spacing: 2) {
                 Text(name).font(.subheadline.weight(.semibold))

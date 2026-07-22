@@ -49,11 +49,14 @@ struct LoginView: View {
                         .keyboardShortcut(.cancelAction)
                 }
                 Button(action: connect) {
-                    if app.isLoading {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Text(isSheet ? "Add" : "Connect").frame(width: 100)
+                    Group {
+                        if app.isLoading {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Text(isSheet ? "Add" : "Connect")
+                        }
                     }
+                    .frame(width: 100)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)

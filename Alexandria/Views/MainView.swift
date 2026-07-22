@@ -65,13 +65,17 @@ struct MainView: View {
     }
 
     @ViewBuilder private var detailContent: some View {
-        switch app.sidebar {
-        case .library: LibraryGridView()
-        case .authors: PeopleGridView(kind: .authors)
-        case .series: SeriesGridView()
-        case .narrators: PeopleGridView(kind: .narrators)
-        case .stats: StatsView()
+        ZStack {
+            switch app.sidebar {
+            case .library: LibraryGridView()
+            case .authors: PeopleGridView(kind: .authors)
+            case .series: SeriesGridView()
+            case .narrators: PeopleGridView(kind: .narrators)
+            case .stats: StatsView()
+            }
         }
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.2), value: app.sidebar)
     }
 
     private func groupChip(_ label: String) -> some View {
@@ -83,6 +87,7 @@ struct MainView: View {
                 Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            .help("Clear filter")
             Spacer()
         }
         .padding(.horizontal, 16)

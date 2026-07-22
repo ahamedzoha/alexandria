@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LibraryGridView: View {
     @Environment(AppState.self) private var app
+    @Environment(PlayerEngine.self) private var player
     @State private var selected: LibraryItem?
 
     private let columns = [GridItem(.adaptive(minimum: 160, maximum: 190), spacing: 22)]
@@ -11,21 +12,33 @@ struct LibraryGridView: View {
             if app.isLoading && app.items.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if app.items.isEmpty, let error = app.errorMessage {
+                ContentUnavailableView {
+                    Label("Couldn't Load Library", systemImage: "wifi.exclamationmark")
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("Retry") { Task { await app.loadLibraries() } }
+                        .buttonStyle(.borderedProminent)
+                }
             } else if app.visibleItems.isEmpty {
                 ContentUnavailableView(
-                    app.items.isEmpty ? "No items" : "No matches",
+                    app.items.isEmpty ? "No Items" : "No Matches",
                     systemImage: app.items.isEmpty ? "book.closed" : "magnifyingglass",
                     description: Text(app.items.isEmpty
-                        ? (app.errorMessage ?? "This library is empty.")
+                        ? "This library is empty."
                         : "Try a different search or filter.")
                 )
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 26) {
                         ForEach(app.visibleItems) { item in
-                            CoverCell(item: item)
-                                .contentShape(Rectangle())
-                                .onTapGesture { selected = item }
+                            Button { selected = item } label: {
+                                CoverCell(item: item)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(item.title) by \(item.author)")
+                            .contextMenu { contextMenu(item) }
                         }
                     }
                     .padding(28)
@@ -38,12 +51,46 @@ struct LibraryGridView: View {
                 .frame(width: 560, height: 680)
         }
     }
+
+    @ViewBuilder private func contextMenu(_ item: LibraryItem) -> some View {
+        Button("Play", systemImage: "play.fill") { playItem(item) }
+        if app.downloads.isDownloaded(item.id) {
+            Button("Remove Download", systemImage: "trash", role: .destructive) {
+                app.removeDownload(itemID: item.id)
+            }
+        } else if app.downloads.activeDownloads[item.id] == nil {
+            Button("Download for Offline", systemImage: "arrow.down.circle") {
+                Task { await app.startDownload(item: item) }
+            }
+        }
+        Divider()
+        Button("Show Author", systemImage: "person") { app.showGroup(kind: .authors, value: item.author) }
+        Button("Show Details", systemImage: "info.circle") { selected = item }
+    }
+
+    private func playItem(_ item: LibraryItem) {
+        Task {
+            let local = app.downloads.localSession(for: item.id)
+            let info: PlaybackInfo?
+            let cover: URL?
+            if let local {
+                info = local
+                cover = app.downloads.localCoverURL(item.id)
+            } else {
+                info = await app.playSession(itemID: item.id)
+                cover = app.coverURL(itemID: item.id)
+            }
+            if let info {
+                player.load(session: info, itemID: item.id, serverURL: app.serverURL,
+                            token: app.token, title: item.title, author: item.author, cover: cover)
+            }
+        }
+    }
 }
 
 struct CoverCell: View {
     @Environment(AppState.self) private var app
     let item: LibraryItem
-    @State private var hovering = false
 
     private var progress: AppState.ItemProgress? { app.progressByItem[item.id] }
 
@@ -53,18 +100,14 @@ struct CoverCell: View {
                 .aspectRatio(1, contentMode: .fit)
                 .overlay(alignment: .bottom) { progressBar }
                 .overlay { finishedScrim }
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous)
+                        .strokeBorder(Theme.hairline, lineWidth: 1)
                 }
                 .overlay(alignment: .topTrailing) { finishedBadge }
                 .overlay(alignment: .topLeading) { downloadBadge }
-                .shadow(color: .black.opacity(hovering ? 0.5 : 0.3),
-                        radius: hovering ? 12 : 6, y: hovering ? 7 : 3)
-                .scaleEffect(hovering ? 1.03 : 1)
-                .animation(.easeOut(duration: 0.15), value: hovering)
-                .onHover { hovering = $0 }
+                .hoverLift(cornerRadius: Theme.Radius.cover)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)

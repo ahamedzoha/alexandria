@@ -55,14 +55,21 @@ struct MiniPlayerView: View {
                 HStack(spacing: 18) {
                     Button { player.prevChapter() } label: { Image(systemName: "backward.end.fill") }
                         .disabled(player.chapters.isEmpty)
+                        .help("Previous Chapter").accessibilityLabel("Previous Chapter")
                     Button { player.skip(-15) } label: { Image(systemName: "gobackward.15") }
+                        .help("Skip Back 15 Seconds").accessibilityLabel("Skip Back 15 Seconds")
                     Button { player.toggle() } label: {
                         Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                             .font(.largeTitle)
+                            .contentTransition(.symbolEffect(.replace))
                     }
+                    .help(player.isPlaying ? "Pause" : "Play")
+                    .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
                     Button { player.skip(30) } label: { Image(systemName: "goforward.30") }
+                        .help("Skip Forward 30 Seconds").accessibilityLabel("Skip Forward 30 Seconds")
                     Button { player.nextChapter() } label: { Image(systemName: "forward.end.fill") }
                         .disabled(player.chapters.isEmpty)
+                        .help("Next Chapter").accessibilityLabel("Next Chapter")
                 }
                 .buttonStyle(.plain)
                 .font(.title3)
