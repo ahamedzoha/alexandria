@@ -33,9 +33,8 @@ struct MainView: View {
             .safeAreaInset(edge: .bottom) { serverSwitcher }
         } detail: {
             VStack(spacing: 0) {
-                if app.sidebar == .library {
-                    searchBar
-                    if let label = app.groupLabel { groupChip(label) }
+                if app.sidebar == .library, let label = app.groupLabel {
+                    groupChip(label)
                 }
                 detailContent
                 NowPlayingBar()
@@ -53,7 +52,7 @@ struct MainView: View {
                     }
                 }
                 ToolbarItem(placement: .principal) {
-                    Spacer()   // center anchor so primary actions stay trailing
+                    searchField
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
@@ -123,13 +122,15 @@ struct MainView: View {
         .background(.bar)
     }
 
-    private var searchBar: some View {
+    private var searchField: some View {
         @Bindable var app = app
         return HStack(spacing: 6) {
+            Spacer(minLength: 0)
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
             TextField("Search books", text: $app.searchText)
                 .textFieldStyle(.plain)
+                .frame(width: 260)
             if !app.searchText.isEmpty {
                 Button { app.searchText = "" } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
@@ -137,16 +138,10 @@ struct MainView: View {
                 .buttonStyle(.plain)
                 .help("Clear search")
             }
+            Spacer(minLength: 0)
         }
         .font(.body)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .frame(maxWidth: 460)
-        .background(.quaternary.opacity(0.6), in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.hairline))
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 24)
-        .padding(.vertical, 10)
     }
 
     private var serverSwitcher: some View {
