@@ -17,9 +17,11 @@ struct StatsView: View {
                     hero(stats)
                     tiles(stats)
                     ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .top, spacing: 20) {
-                            genresCard(stats).frame(maxWidth: .infinity)
-                            authorsCard(stats).frame(maxWidth: .infinity)
+                        Grid(horizontalSpacing: 20, verticalSpacing: 20) {
+                            GridRow {
+                                genresCard(stats).frame(maxWidth: .infinity, maxHeight: .infinity)
+                                authorsCard(stats).frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
                         }
                         VStack(spacing: 20) { genresCard(stats); authorsCard(stats) }
                     }
@@ -56,26 +58,49 @@ struct StatsView: View {
     private func hero(_ s: LibraryStats) -> some View {
         let hours = Int((s.totalDuration ?? 0) / 3600)
         let days = Double(hours) / 24
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("Your Library").font(.largeTitle.bold())
-            Text("\(s.totalItems ?? app.items.count) books · \(hours) hours of listening — that's \(String(format: "%.0f", days)) days nonstop 🎧")
-                .font(.title3)
-                .foregroundStyle(.white.opacity(0.85))
+        return HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Your Library").font(.largeTitle.bold())
+                Text("\(s.totalItems ?? app.items.count) books · \(hours) hours of listening — that's \(String(format: "%.0f", days)) days nonstop 🎧")
+                    .font(.title3)
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            Spacer(minLength: 12)
+            serverLogo
         }
+        .foregroundStyle(.white)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(24)
         .background(
-            LinearGradient(colors: [.blue.opacity(0.55), .purple.opacity(0.45), .pink.opacity(0.35)],
+            LinearGradient(colors: [.blue.opacity(0.6), .purple.opacity(0.5), .pink.opacity(0.4)],
                            startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: 20, style: .continuous)
         )
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.white.opacity(0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.white.opacity(0.14)))
+    }
+
+    private var serverLogo: some View {
+        let host = app.activeServer?.name ?? "audiobookshelf"
+        return VStack(spacing: 8) {
+            Image(systemName: "headphones.circle.fill")
+                .font(.system(size: 46))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
+            Text(host)
+                .font(.system(.callout, design: .rounded).weight(.bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .background(.white.opacity(0.18), in: Capsule())
+                .overlay(Capsule().strokeBorder(.white.opacity(0.35)))
+        }
+        .fixedSize()
     }
 
     // MARK: Tiles
 
     private func tiles(_ s: LibraryStats) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 160, maximum: 240), spacing: 16)], spacing: 16) {
+        HStack(spacing: 16) {
             tile("books.vertical.fill", "\(s.totalItems ?? app.items.count)", "Items", [.blue, .cyan])
             tile("clock.fill", "\(Int((s.totalDuration ?? 0) / 3600))", "Overall Hours", [.orange, .pink])
             tile("person.2.fill", "\(s.totalAuthors ?? 0)", "Authors", [.purple, .indigo])
@@ -114,17 +139,16 @@ struct StatsView: View {
                 ZStack {
                     Chart(Array(genres.enumerated()), id: \.offset) { index, g in
                         SectorMark(angle: .value("Books", g.value),
-                                   innerRadius: .ratio(0.62), angularInset: 2)
+                                   innerRadius: .ratio(0.72), angularInset: 2)
                             .cornerRadius(4)
                             .foregroundStyle(palette[index % palette.count])
                     }
-                    .frame(width: 150, height: 150)
+                    .frame(width: 184, height: 184)
                     if let top, total > 0 {
-                        VStack(spacing: 0) {
+                        VStack(spacing: 1) {
                             Text("\(Int(Double(top.value) / total * 100))%")
-                                .font(.title2.bold())
-                            Text(top.label).font(.caption2).foregroundStyle(.secondary)
-                                .lineLimit(1).frame(maxWidth: 90)
+                                .font(.system(.title, design: .rounded).weight(.bold))
+                            Text("top genre").font(.caption2).foregroundStyle(.secondary)
                         }
                     }
                 }
