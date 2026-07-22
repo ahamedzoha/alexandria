@@ -139,7 +139,7 @@ struct StatsView: View {
         let top = genres.first
         let total = Double(genres.reduce(0) { $0 + $1.value })
         return card("Top Genres", icon: "theatermasks", fillHeight: true) {
-            HStack(spacing: 18) {
+            HStack(spacing: 20) {
                 ZStack {
                     Chart(Array(genres.enumerated()), id: \.offset) { index, g in
                         SectorMark(angle: .value("Books", g.value),
@@ -147,27 +147,28 @@ struct StatsView: View {
                             .cornerRadius(4)
                             .foregroundStyle(palette[index % palette.count])
                     }
-                    .frame(width: 184, height: 184)
+                    .frame(width: 230, height: 230)
                     if let top, total > 0 {
-                        VStack(spacing: 1) {
+                        VStack(spacing: 2) {
                             Text("\(Int(Double(top.value) / total * 100))%")
-                                .font(.system(.title, design: .rounded).weight(.bold))
-                            Text("top genre").font(.caption2).foregroundStyle(.secondary)
+                                .font(.system(size: 46, weight: .bold, design: .rounded))
+                            Text("top genre").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 12) {
                     ForEach(Array(genres.enumerated()), id: \.offset) { index, g in
                         HStack(spacing: 8) {
-                            Circle().fill(palette[index % palette.count]).frame(width: 9, height: 9)
-                            Text(g.label).font(.caption).lineLimit(1)
+                            Circle().fill(palette[index % palette.count]).frame(width: 10, height: 10)
+                            Text(g.label).font(.callout).lineLimit(1)
                             Spacer(minLength: 4)
-                            Text("\(g.value)").font(.caption.monospacedDigit().weight(.semibold))
+                            Text("\(g.value)").font(.callout.monospacedDigit().weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
