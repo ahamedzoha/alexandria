@@ -12,6 +12,7 @@ struct AlexandriaApp: App {
                 .environment(player)
                 .frame(minWidth: 900, minHeight: 600)
         }
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandMenu("Playback") {
                 Button(player.isPlaying ? "Pause" : "Play") { player.toggle() }

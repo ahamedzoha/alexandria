@@ -7,13 +7,18 @@ struct RootView: View {
     @State private var spaceMonitorInstalled = false
 
     var body: some View {
-        Group {
+        ZStack {
             if app.isLoggedIn {
                 MainView()
+                    .transition(.scale(scale: 1.02).combined(with: .opacity))
             } else {
                 LoginView()
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .zIndex(1)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.spring(response: 0.7, dampingFraction: 0.85), value: app.isLoggedIn)
         .task {
             // Persist playback position back to the server.
             player.onProgress = { id, time, duration in
