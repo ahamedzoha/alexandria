@@ -15,7 +15,6 @@ struct AlexandriaApp: App {
         .commands {
             CommandMenu("Playback") {
                 Button(player.isPlaying ? "Pause" : "Play") { player.toggle() }
-                    .keyboardShortcut(.space, modifiers: [])
                 Divider()
                 Button("Skip Forward") { player.skip(30) }
                     .keyboardShortcut("]", modifiers: .command)

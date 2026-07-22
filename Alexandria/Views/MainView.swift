@@ -47,6 +47,10 @@ struct MainView: View {
                         Picker("Sort by", selection: $app.sort) {
                             ForEach(AppState.LibrarySort.allCases) { Text($0.rawValue).tag($0) }
                         }
+                        Picker("Order", selection: $app.sortAscending) {
+                            Label("Ascending", systemImage: "arrow.up").tag(true)
+                            Label("Descending", systemImage: "arrow.down").tag(false)
+                        }
                         Divider()
                         Picker("Show", selection: $app.filter) {
                             ForEach(AppState.LibraryFilter.allCases) { Text($0.rawValue).tag($0) }

@@ -56,6 +56,7 @@ final class AppState {
     // Search / sort / filter / browse
     var searchText = ""
     var sort: LibrarySort = .title
+    var sortAscending = true
     var filter: LibraryFilter = .all
     var sidebar: Browse = .library
     var groupKind: Browse?
@@ -126,8 +127,9 @@ final class AppState {
         case .author:
             result.sort { $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending }
         case .progress:
-            result.sort { (progressByItem[$0.id]?.fraction ?? 0) > (progressByItem[$1.id]?.fraction ?? 0) }
+            result.sort { (progressByItem[$0.id]?.fraction ?? 0) < (progressByItem[$1.id]?.fraction ?? 0) }
         }
+        if !sortAscending { result.reverse() }
 
         return result
     }
