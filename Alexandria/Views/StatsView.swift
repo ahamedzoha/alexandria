@@ -182,7 +182,9 @@ struct StatsView: View {
                 ForEach(Array(authors.enumerated()), id: \.offset) { index, a in
                     AuthorBar(rank: index + 1, name: a.label, value: a.value,
                               fraction: maxVal > 0 ? Double(a.value) / maxVal : 0,
-                              animate: appear)
+                              animate: appear) {
+                        app.showGroup(kind: .authors, value: a.label)
+                    }
                 }
             }
         }
@@ -282,12 +284,17 @@ private struct AuthorBar: View {
     let value: Int
     let fraction: Double
     let animate: Bool
+    let onTap: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         VStack(spacing: 4) {
             HStack(spacing: 8) {
                 Text(medal).font(.callout).frame(width: 24, alignment: .leading)
-                Text(name).font(.callout).lineLimit(1)
+                Text(name).font(.callout.weight(hovering ? .semibold : .regular)).lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .opacity(hovering ? 1 : 0)
                 Spacer(minLength: 4)
                 Text("\(value)").font(.callout.monospacedDigit().weight(.bold)).foregroundStyle(.secondary)
             }
@@ -301,6 +308,11 @@ private struct AuthorBar: View {
             }
             .frame(height: 8)
         }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(hovering ? Color.white.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
+        .onHover { hovering = $0 }
         .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(Double(rank) * 0.05), value: animate)
     }
 
