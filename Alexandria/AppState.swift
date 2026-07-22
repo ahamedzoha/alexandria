@@ -31,6 +31,11 @@ final class AppState {
         var id: String { rawValue }
     }
 
+    enum ViewMode: String, CaseIterable, Identifiable {
+        case grid, list
+        var id: String { rawValue }
+    }
+
     // Sidebar sections / browse grouping
     enum Browse: Hashable, Sendable {
         case library
@@ -58,6 +63,7 @@ final class AppState {
     var sort: LibrarySort = .title
     var sortAscending = true
     var filter: LibraryFilter = .all
+    var viewMode: ViewMode = .grid
     var sidebar: Browse = .library
     var groupKind: Browse?
     var groupValue: String?

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct LoginView: View {
     @Environment(AppState.self) private var app
@@ -14,9 +15,10 @@ struct LoginView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "books.vertical.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.tint)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 88, height: 88)
+                .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
             Text(isSheet ? "Add Server" : "Alexandria")
                 .font(.largeTitle.bold())
             Text("Connect to your audiobookshelf server")
@@ -65,6 +67,13 @@ struct LoginView: View {
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            LinearGradient(
+                colors: [.blue.opacity(0.16), .purple.opacity(0.12), .clear],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        }
     }
 
     private func connect() {

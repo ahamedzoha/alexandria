@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Compact player shown from the menu bar.
 struct MiniPlayerView: View {
@@ -6,6 +7,8 @@ struct MiniPlayerView: View {
 
     var body: some View {
         VStack(spacing: 12) {
+            header
+            Divider()
             if player.currentTitle.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "headphones")
@@ -88,6 +91,25 @@ struct MiniPlayerView: View {
         }
         .padding(16)
         .frame(width: 300)
+    }
+
+    private var header: some View {
+        HStack {
+            Label("Alexandria", systemImage: "books.vertical.fill")
+                .font(.headline)
+                .foregroundStyle(.tint)
+            Spacer()
+            Button("Open Library") { openLibrary() }
+                .buttonStyle(.link)
+                .font(.callout)
+        }
+    }
+
+    private func openLibrary() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.windows.first(where: { $0.canBecomeMain }) {
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
     private func timeString(_ seconds: Double) -> String {

@@ -29,26 +29,69 @@ struct LibraryGridView: View {
                         ? "This library is empty."
                         : "Try a different search or filter.")
                 )
+            } else if app.viewMode == .grid {
+                gridView
             } else {
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 26) {
-                        ForEach(app.visibleItems) { item in
-                            Button { selected = item } label: {
-                                CoverCell(item: item)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("\(item.title) by \(item.author)")
-                            .contextMenu { contextMenu(item) }
-                        }
-                    }
-                    .padding(28)
-                }
+                tableView
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(item: $selected) { item in
             ItemDetailView(item: item)
                 .frame(width: 560, height: 680)
+        }
+    }
+
+    private var gridView: some View {
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: 26) {
+                ForEach(app.visibleItems) { item in
+                    Button { selected = item } label: {
+                        CoverCell(item: item)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(item.title) by \(item.author)")
+                    .contextMenu { contextMenu(item) }
+                }
+            }
+            .padding(28)
+        }
+    }
+
+    private var tableView: some View {
+        Table(app.visibleItems) {
+            TableColumn("Title") { item in
+                HStack(spacing: 8) {
+                    RemoteImage(url: app.coverURL(itemID: item.id)) { image in
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } fallback: {
+                        RoundedRectangle(cornerRadius: 4).fill(.quaternary)
+                    }
+                    .frame(width: 28, height: 28)
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    Text(item.title).lineLimit(1)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { selected = item }
+                .contextMenu { contextMenu(item) }
+            }
+            TableColumn("Author") { item in Text(item.author).lineLimit(1) }
+            TableColumn("Duration") { item in
+                Text(durationString(item.duration) ?? "—").monospacedDigit().foregroundStyle(.secondary)
+            }
+            TableColumn("Progress") { item in progressCell(item) }
+        }
+    }
+
+    @ViewBuilder private func progressCell(_ item: LibraryItem) -> some View {
+        let p = app.progressByItem[item.id]
+        if p?.isFinished == true {
+            Label("Finished", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green).font(.caption)
+        } else if let p, p.fraction > 0.001 {
+            Text("\(Int(p.fraction * 100))%").monospacedDigit().foregroundStyle(.secondary)
+        } else {
+            Text("—").foregroundStyle(.tertiary)
         }
     }
 

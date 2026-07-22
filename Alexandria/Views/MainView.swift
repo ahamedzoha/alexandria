@@ -42,6 +42,16 @@ struct MainView: View {
             .navigationTitle(currentTitle)
             .searchable(text: $app.searchText, placement: .toolbar, prompt: "Search books")
             .toolbar {
+                if app.sidebar == .library {
+                    ToolbarItem(placement: .primaryAction) {
+                        Picker("View", selection: $app.viewMode) {
+                            Image(systemName: "square.grid.2x2").tag(AppState.ViewMode.grid)
+                            Image(systemName: "list.bullet").tag(AppState.ViewMode.list)
+                        }
+                        .pickerStyle(.segmented)
+                        .help("Grid or list view")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Picker("Sort by", selection: $app.sort) {
