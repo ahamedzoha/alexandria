@@ -1,32 +1,40 @@
 import SwiftUI
+import Charts
 
 struct StatsView: View {
     @Environment(AppState.self) private var app
     @State private var loading = true
+    @State private var appear = false
 
     private var stats: LibraryStats? { app.stats }
+
+    private let palette: [Color] = [.blue, .purple, .pink, .orange, .teal, .indigo, .green, .cyan]
 
     var body: some View {
         ScrollView {
             if let stats {
-                VStack(spacing: 24) {
-                    tileRow(stats)
-                    // Two independent columns avoid the ragged masonry gaps that an
-                    // adaptive LazyVGrid produces with uneven card heights.
+                VStack(spacing: 26) {
+                    hero(stats)
+                    tiles(stats)
                     ViewThatFits(in: .horizontal) {
                         HStack(alignment: .top, spacing: 20) {
-                            VStack(spacing: 20) { genresCard(stats); largestCard(stats) }
-                            VStack(spacing: 20) { authorsCard(stats); longestCard(stats) }
+                            genresCard(stats).frame(maxWidth: .infinity)
+                            authorsCard(stats).frame(maxWidth: .infinity)
                         }
-                        VStack(spacing: 20) {
-                            genresCard(stats); authorsCard(stats)
-                            longestCard(stats); largestCard(stats)
-                        }
+                        VStack(spacing: 20) { genresCard(stats); authorsCard(stats) }
                     }
+                    spotlight("Longest Listens", systemImage: "hourglass",
+                              items: (stats.longestItems ?? []).sorted { ($0.duration ?? 0) > ($1.duration ?? 0) },
+                              value: { durationString($0.duration) ?? "" })
+                    spotlight("Biggest Files", systemImage: "internaldrive",
+                              items: (stats.largestItems ?? []).sorted { ($0.size ?? 0) > ($1.size ?? 0) },
+                              value: { (sizeString($0.size) ?? "") })
                 }
                 .padding(28)
-                .frame(maxWidth: 1100)
+                .frame(maxWidth: 1150)
                 .frame(maxWidth: .infinity)
+                .opacity(appear ? 1 : 0)
+                .animation(.easeOut(duration: 0.35), value: appear)
             } else if loading {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 300)
             } else {
@@ -39,122 +47,218 @@ struct StatsView: View {
             loading = true
             await app.loadStats()
             loading = false
+            appear = true
         }
+    }
+
+    // MARK: Hero
+
+    private func hero(_ s: LibraryStats) -> some View {
+        let hours = Int((s.totalDuration ?? 0) / 3600)
+        let days = Double(hours) / 24
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Your Library").font(.largeTitle.bold())
+            Text("\(s.totalItems ?? app.items.count) books · \(hours) hours of listening — that's \(String(format: "%.0f", days)) days nonstop 🎧")
+                .font(.title3)
+                .foregroundStyle(.white.opacity(0.85))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(24)
+        .background(
+            LinearGradient(colors: [.blue.opacity(0.55), .purple.opacity(0.45), .pink.opacity(0.35)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.white.opacity(0.12)))
     }
 
     // MARK: Tiles
 
-    private func tileRow(_ s: LibraryStats) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 16)], spacing: 16) {
-            tile("books.vertical.fill", "\(s.totalItems ?? app.items.count)", "Items")
-            tile("clock.fill", hours(s.totalDuration), "Overall Hours")
-            tile("person.2.fill", "\(s.totalAuthors ?? 0)", "Authors")
-            tile("externaldrive.fill", gb(s.totalSize), "Size (GB)")
-            tile("music.note.list", "\(s.numAudioTracks ?? 0)", "Audio Tracks")
+    private func tiles(_ s: LibraryStats) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 160, maximum: 240), spacing: 16)], spacing: 16) {
+            tile("books.vertical.fill", "\(s.totalItems ?? app.items.count)", "Items", [.blue, .cyan])
+            tile("clock.fill", "\(Int((s.totalDuration ?? 0) / 3600))", "Overall Hours", [.orange, .pink])
+            tile("person.2.fill", "\(s.totalAuthors ?? 0)", "Authors", [.purple, .indigo])
+            tile("internaldrive.fill", gb(s.totalSize), "Size (GB)", [.teal, .green])
+            tile("music.note.list", "\(s.numAudioTracks ?? 0)", "Audio Tracks", [.pink, .purple])
         }
     }
 
-    private func tile(_ icon: String, _ value: String, _ label: String) -> some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: icon).font(.title3).foregroundStyle(.tint)
-                Text(value).font(.system(.title, design: .rounded).weight(.bold))
-            }
+    private func tile(_ icon: String, _ value: String, _ label: String, _ colors: [Color]) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundStyle(.white)
+                .frame(width: 46, height: 46)
+                .background(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
+                .shadow(color: colors[0].opacity(0.5), radius: 8, y: 3)
+            Text(value).font(.system(.title, design: .rounded).weight(.bold))
             Text(label).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 18)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.06)))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.06)))
+        .scaleEffect(appear ? 1 : 0.9)
+        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: appear)
     }
 
-    // MARK: Cards
+    // MARK: Genres donut
 
     private func genresCard(_ s: LibraryStats) -> some View {
-        let items = (s.genresWithCount ?? []).sorted { $0.value > $1.value }.prefix(5)
-        let total = Double(s.totalItems ?? app.items.count)
-        return chartCard("Top Genres") {
-            ForEach(Array(items.enumerated()), id: \.offset) { _, g in
-                let pct = total > 0 ? Double(g.value) / total : 0
-                barRow(label: g.label, trailing: "\(Int(pct * 100))%", fraction: pct)
+        let genres = Array((s.genresWithCount ?? []).sorted { $0.value > $1.value }.prefix(6))
+        let top = genres.first
+        let total = Double(genres.reduce(0) { $0 + $1.value })
+        return card("Top Genres", icon: "theatermasks") {
+            HStack(spacing: 18) {
+                ZStack {
+                    Chart(Array(genres.enumerated()), id: \.offset) { index, g in
+                        SectorMark(angle: .value("Books", g.value),
+                                   innerRadius: .ratio(0.62), angularInset: 2)
+                            .cornerRadius(4)
+                            .foregroundStyle(palette[index % palette.count])
+                    }
+                    .frame(width: 150, height: 150)
+                    if let top, total > 0 {
+                        VStack(spacing: 0) {
+                            Text("\(Int(Double(top.value) / total * 100))%")
+                                .font(.title2.bold())
+                            Text(top.label).font(.caption2).foregroundStyle(.secondary)
+                                .lineLimit(1).frame(maxWidth: 90)
+                        }
+                    }
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(genres.enumerated()), id: \.offset) { index, g in
+                        HStack(spacing: 8) {
+                            Circle().fill(palette[index % palette.count]).frame(width: 9, height: 9)
+                            Text(g.label).font(.caption).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text("\(g.value)").font(.caption.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
         }
     }
+
+    // MARK: Author ranked bars
 
     private func authorsCard(_ s: LibraryStats) -> some View {
-        let items = (s.authorsWithCount ?? []).sorted { $0.value > $1.value }.prefix(10)
-        let maxVal = Double(items.map(\.value).max() ?? 1)
-        return chartCard("Top Authors") {
-            ForEach(Array(items.enumerated()), id: \.offset) { _, a in
-                barRow(label: a.label, trailing: "\(a.value)",
-                       fraction: maxVal > 0 ? Double(a.value) / maxVal : 0)
+        let authors = Array((s.authorsWithCount ?? []).sorted { $0.value > $1.value }.prefix(8))
+        let maxVal = Double(authors.map(\.value).max() ?? 1)
+        return card("Top Authors", icon: "person.3") {
+            VStack(spacing: 10) {
+                ForEach(Array(authors.enumerated()), id: \.offset) { index, a in
+                    AuthorBar(rank: index + 1, name: a.label, value: a.value,
+                              fraction: maxVal > 0 ? Double(a.value) / maxVal : 0,
+                              animate: appear)
+                }
             }
         }
     }
 
-    private func longestCard(_ s: LibraryStats) -> some View {
-        let items = (s.longestItems ?? []).sorted { ($0.duration ?? 0) > ($1.duration ?? 0) }.prefix(6)
-        let maxVal = items.map { $0.duration ?? 0 }.max() ?? 1
-        return chartCard("Longest Items (hrs)") {
-            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                let h = (item.duration ?? 0) / 3600
-                barRow(label: item.title ?? "—", trailing: String(format: "%.1f", h),
-                       fraction: maxVal > 0 ? (item.duration ?? 0) / maxVal : 0)
+    // MARK: Spotlight cover strips
+
+    private func spotlight(_ title: String, systemImage: String,
+                           items: [LibraryStats.StatItem], value: @escaping (LibraryStats.StatItem) -> String) -> some View {
+        card(title, icon: systemImage) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 16) {
+                    ForEach(Array(items.prefix(8).enumerated()), id: \.offset) { _, item in
+                        VStack(alignment: .leading, spacing: 6) {
+                            RemoteImage(url: item.id.flatMap { app.coverURL(itemID: $0) }) { image in
+                                image.resizable().aspectRatio(contentMode: .fill)
+                            } fallback: {
+                                RoundedRectangle(cornerRadius: 8).fill(.quaternary)
+                            }
+                            .frame(width: 96, height: 96)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(alignment: .bottomTrailing) {
+                                Text(value(item))
+                                    .font(.caption2.weight(.bold)).foregroundStyle(.white)
+                                    .padding(.horizontal, 6).padding(.vertical, 3)
+                                    .background(.black.opacity(0.65), in: Capsule())
+                                    .padding(6)
+                            }
+                            Text(item.title ?? "—").font(.caption).lineLimit(1).frame(width: 96, alignment: .leading)
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
             }
         }
     }
 
-    private func largestCard(_ s: LibraryStats) -> some View {
-        let items = (s.largestItems ?? []).sorted { ($0.size ?? 0) > ($1.size ?? 0) }.prefix(6)
-        let maxVal = items.map { $0.size ?? 0 }.max() ?? 1
-        return chartCard("Largest Items") {
-            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                barRow(label: item.title ?? "—",
-                       trailing: gb(item.size) + " GB",
-                       fraction: maxVal > 0 ? (item.size ?? 0) / maxVal : 0)
-            }
-        }
-    }
+    // MARK: Card shell
 
-    private func chartCard<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    private func card<Content: View>(_ title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(title).font(.title3.bold())
-            VStack(spacing: 12) { content() }
+            Label(title, systemImage: icon)
+                .font(.title3.bold())
+                .labelStyle(.titleAndIcon)
+            content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.06)))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.06)))
     }
 
-    private func barRow(label: String, trailing: String, fraction: Double) -> some View {
+    // MARK: Formatting
+
+    private func gb(_ bytes: Double?) -> String {
+        guard let bytes else { return "0" }
+        return String(format: "%.1f", bytes / 1_073_741_824)
+    }
+}
+
+// MARK: - Animated author bar
+
+private struct AuthorBar: View {
+    let rank: Int
+    let name: String
+    let value: Int
+    let fraction: Double
+    let animate: Bool
+
+    var body: some View {
         VStack(spacing: 4) {
-            HStack {
-                Text(label).font(.callout).lineLimit(1)
-                Spacer()
-                Text(trailing).font(.callout.monospacedDigit().weight(.semibold)).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Text(medal).font(.callout).frame(width: 24, alignment: .leading)
+                Text(name).font(.callout).lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(value)").font(.callout.monospacedDigit().weight(.bold)).foregroundStyle(.secondary)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(.white.opacity(0.1))
                     Capsule()
-                        .fill(LinearGradient(colors: [.accentColor, .accentColor.opacity(0.7)],
-                                             startPoint: .leading, endPoint: .trailing))
-                        .frame(width: max(4, geo.size.width * fraction))
+                        .fill(LinearGradient(colors: barColors, startPoint: .leading, endPoint: .trailing))
+                        .frame(width: animate ? max(4, geo.size.width * fraction) : 0)
                 }
             }
             .frame(height: 8)
         }
+        .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(Double(rank) * 0.05), value: animate)
     }
 
-    // MARK: Formatting
-
-    private func hours(_ seconds: Double?) -> String {
-        guard let seconds else { return "0" }
-        return "\(Int(seconds / 3600))"
+    private var medal: String {
+        switch rank {
+        case 1: return "🥇"
+        case 2: return "🥈"
+        case 3: return "🥉"
+        default: return "\(rank)"
+        }
     }
-    private func gb(_ bytes: Double?) -> String {
-        guard let bytes else { return "0" }
-        return String(format: "%.1f", bytes / 1_073_741_824)
+
+    private var barColors: [Color] {
+        switch rank {
+        case 1: return [.yellow, .orange]
+        case 2: return [.gray, .white.opacity(0.6)]
+        case 3: return [.orange, .brown]
+        default: return [.accentColor, .accentColor.opacity(0.6)]
+        }
     }
 }

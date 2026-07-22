@@ -143,11 +143,17 @@ final class AppState {
             let t = try await APIClient(serverURL: cleaned, token: nil)
                 .login(username: username, password: password)
             let id = UUID().uuidString
-            let trimmedName = name.trimmingCharacters(in: .whitespaces)
-            let displayName = trimmedName.isEmpty ? hostName(cleaned) : trimmedName
-            UserDefaults.standard.set(t, forKey: tokenKey(id))
-            servers.append(ServerRef(id: id, name: displayName, url: cleaned))
-            activeServerID = id
+            // Reuse an existing server for the same URL instead of duplicating it.
+            if let existing = servers.first(where: { $0.url == cleaned }) {
+                UserDefaults.standard.set(t, forKey: tokenKey(existing.id))
+                activeServerID = existing.id
+            } else {
+                let trimmedName = name.trimmingCharacters(in: .whitespaces)
+                let displayName = trimmedName.isEmpty ? hostName(cleaned) : trimmedName
+                UserDefaults.standard.set(t, forKey: tokenKey(id))
+                servers.append(ServerRef(id: id, name: displayName, url: cleaned))
+                activeServerID = id
+            }
             persistServers()
             resetLibraryState()
             await loadLibraries()
@@ -213,6 +219,30 @@ final class AppState {
             persistServers()
             defaults.removeObject(forKey: "serverURL")
             defaults.removeObject(forKey: "token")
+        }
+
+        // Clean up any duplicate servers (same URL) left by earlier builds.
+        // Keep the active server's entry (its token is the valid one).
+        if let active = activeServerID, let idx = servers.firstIndex(where: { $0.id == active }) {
+            let a = servers.remove(at: idx)
+            servers.insert(a, at: 0)
+        }
+        var seenURLs = Set<String>()
+        var deduped: [ServerRef] = []
+        for server in servers {
+            if seenURLs.contains(server.url) {
+                UserDefaults.standard.removeObject(forKey: tokenKey(server.id))
+            } else {
+                seenURLs.insert(server.url)
+                deduped.append(server)
+            }
+        }
+        if deduped.count != servers.count {
+            servers = deduped
+            if let active = activeServerID, !servers.contains(where: { $0.id == active }) {
+                activeServerID = servers.first?.id
+            }
+            persistServers()
         }
 
         if activeServerID == nil { activeServerID = servers.first?.id }
