@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A reusable edge-to-edge horizontal artwork shelf with a Title-2 / See-All
+/// A reusable edge-to-edge horizontal artwork shelf with the shared shelf-title
 /// header, reusing the library grid's CoverCell at a fixed tile width.
 struct HomeShelf: View {
     @Environment(AppState.self) private var app
@@ -24,12 +24,18 @@ struct HomeShelf: View {
                                   onPlay: { onPlay(item) })
                             .frame(width: 150)
                             .contextMenu { menu(for: item) }
+                            .scrollTransition { content, phase in
+                                content
+                                    .scaleEffect(phase.isIdentity ? 1 : 0.97)
+                                    .opacity(phase.isIdentity ? 1 : 0.85)
+                            }
                     }
                 }
                 .padding(.vertical, 4)
             }
             .scrollClipDisabled()
             .contentMargins(.horizontal, Theme.Space.xl, for: .scrollContent)
+            .scrollEdgeEffectStyle(.soft, for: .horizontal)
         }
     }
 
@@ -53,7 +59,42 @@ struct HomeShelf: View {
     }
 }
 
-/// Section header: bold Title-2 label + optional "See All" chevron.
+/// Horizontal shelf of podcast episode cards (Home "Latest Episodes"), matching
+/// HomeShelf's header + edge-to-edge scroll treatment. No See-All: there is no
+/// episode-filtered library view to send it to.
+struct EpisodeShelf: View {
+    let title: String
+    let symbol: String
+    let episodes: [PodcastEpisode]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            SectionHeader(title: title, symbol: symbol)
+                .padding(.horizontal, Theme.Space.xl)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: Theme.Space.m) {
+                    ForEach(episodes) { episode in
+                        EpisodeCard(episode: episode)
+                            .frame(width: 150)
+                            .scrollTransition { content, phase in
+                                content
+                                    .scaleEffect(phase.isIdentity ? 1 : 0.97)
+                                    .opacity(phase.isIdentity ? 1 : 0.85)
+                            }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            .scrollClipDisabled()
+            .contentMargins(.horizontal, Theme.Space.xl, for: .scrollContent)
+            .scrollEdgeEffectStyle(.soft, for: .horizontal)
+        }
+    }
+}
+
+/// Section header: shared shelf-title label + a quiet "See All" chevron
+/// affordance where a destination exists.
 struct SectionHeader: View {
     let title: String
     let symbol: String
@@ -62,19 +103,19 @@ struct SectionHeader: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             Label(title, systemImage: symbol)
-                .font(.title2.weight(.bold))
+                .font(Theme.Typography.shelfTitle)
                 .labelStyle(.titleAndIcon)
             Spacer()
             if let onSeeAll {
                 Button(action: onSeeAll) {
                     HStack(spacing: 3) {
                         Text("See All")
-                        Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                        Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
                     }
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .font(.body)
-                .foregroundStyle(.tint)
                 .help("Show all in Library")
             }
         }

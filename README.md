@@ -4,7 +4,7 @@
   <p><strong>A beautiful, native macOS client for your <a href="https://www.audiobookshelf.org/">audiobookshelf</a> library.</strong></p>
   <p>
     <img alt="Latest release" src="https://img.shields.io/github/v/release/ahamedzoha/alexandria?color=8A5CF6&label=release" />
-    <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white" />
+    <img alt="macOS 26+" src="https://img.shields.io/badge/macOS-26%2B-000000?logo=apple&logoColor=white" />
     <img alt="SwiftUI" src="https://img.shields.io/badge/built%20with-SwiftUI-0A84FF?logo=swift&logoColor=white" />
   </p>
 </div>
@@ -61,12 +61,12 @@ deep system integration, designed to feel like it shipped with macOS.
    ```
 4. Enter your server URL, username, and password.
 
-Requires **macOS 14 or later**.
+Requires **macOS 26 (Tahoe) or later**.
 
 ### Build from source
 
-- **Xcode 26 or later** — the UI adopts macOS 26 *Liquid Glass*, gated with
-  `#available`, so the app still **runs on macOS 14+**.
+- **Xcode 26 or later** — the UI adopts macOS 26 *Liquid Glass* APIs
+  unconditionally, so both building and running require macOS 26.
 - Open `Alexandria.xcodeproj`, pick scheme **Alexandria** / destination **My Mac**,
   press **⌘R**.
 
@@ -89,7 +89,7 @@ notarization path — lives in **[DISTRIBUTING.md](DISTRIBUTING.md)**.
 
 SwiftUI · Observation · AVFoundation (`AVQueuePlayer`, chapters) · MediaPlayer
 (Now Playing / remote commands) · `async`/`await` REST against the audiobookshelf API.
-macOS 14 deployment target; Liquid Glass adopted behind `#available(macOS 26)`.
+macOS 26 deployment target; Liquid Glass adopted throughout.
 
 ## Roadmap
 

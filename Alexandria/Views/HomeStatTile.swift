@@ -1,20 +1,14 @@
 import SwiftUI
 
-/// A restrained stat chip on the content-card surface: tinted icon, SF-Rounded
-/// numeral that ticks with .numericText(), and a caption.
+/// One quiet stat: a rounded numeral that ticks with .numericText() over a
+/// caption label. No card chrome — the hairline row it lives in provides the
+/// structure.
 struct HomeStatTile: View {
-    let symbol: String
-    let tint: Color
     let value: String
     let label: String
 
     var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: symbol)
-                .font(.title3)
-                .foregroundStyle(tint)
-                .frame(width: 44, height: 44)
-                .background(Circle().fill(tint.opacity(0.15)))
+        VStack(alignment: .leading, spacing: 2) {
             Text(value)
                 .font(.system(.title2, design: .rounded).weight(.bold))
                 .monospacedDigit()
@@ -23,30 +17,33 @@ struct HomeStatTile: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Theme.Space.m)
-        .contentCard(cornerRadius: Theme.Radius.card)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(value) \(label)")
     }
 }
 
-/// The three-across listening snapshot below the greeting.
+/// The listening snapshot below the greeting: a single hairline-separated row —
+/// quieter and more native than floating stat cards.
 struct HomeStatRow: View {
     @Environment(AppState.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: Theme.Space.m) {
-            HomeStatTile(symbol: "headphones", tint: .blue,
-                         value: hoursText, label: "Hours listened")
-            HomeStatTile(symbol: "checkmark.circle.fill", tint: .green,
-                         value: "\(app.finishedCount)", label: "Finished")
-            HomeStatTile(symbol: "book.pages", tint: .orange,
-                         value: "\(app.inProgressCount)", label: "In progress")
+        HStack(spacing: Theme.Space.l) {
+            HomeStatTile(value: hoursText, label: "Hours listened")
+            separator
+            HomeStatTile(value: "\(app.finishedCount)", label: "Finished")
+            separator
+            HomeStatTile(value: "\(app.inProgressCount)", label: "In progress")
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(reduceMotion ? nil : .snappy, value: hoursText)
         .animation(reduceMotion ? nil : .snappy, value: app.finishedCount)
         .animation(reduceMotion ? nil : .snappy, value: app.inProgressCount)
+    }
+
+    private var separator: some View {
+        Divider().frame(height: 28)
     }
 
     private var hoursText: String {

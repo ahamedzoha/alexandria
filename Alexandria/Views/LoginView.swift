@@ -52,7 +52,12 @@ struct LoginView: View {
             .frame(maxWidth: 360)
             .padding(40)
         }
-        .preferredColorScheme(.dark)   // branded dark splash; keeps text legible on the tinted backdrop
+        // The splash itself always renders dark (intentional brand moment) …
+        .environment(\.colorScheme, .dark)
+        // … but the window-level preference releases the moment login succeeds,
+        // so MainView crossfades in already wearing the system appearance
+        // instead of snapping light after the transition ends.
+        .preferredColorScheme(app.isLoggedIn ? nil : .dark)
         .onAppear { focus = .server }
     }
 
@@ -219,27 +224,23 @@ struct LoginView: View {
     }
 }
 
-/// Branded dark login backdrop — a deep violet base with soft, STATIC accent
-/// glows that echo the app icon's violet/pink. Warm and inviting without the
-/// animated multi-hue wash (which was the "AI template" tell).
+/// Forced-dark login backdrop — a deep neutral field with ONE soft, static
+/// glow behind the form, sampled from the system accent rather than any
+/// hardcoded brand hue. The dynamic colors resolve dark via the splash's
+/// local `.environment(\.colorScheme, .dark)`, so the backdrop stays dark
+/// even while the window-level scheme hands off to the system appearance.
 private struct AuthBackground: View {
     var body: some View {
         ZStack {
-            // Deep, brand-tinted base for warmth and depth.
+            // Deep neutral base with a hint of vertical depth.
             LinearGradient(
-                colors: [Color(red: 0.12, green: 0.09, blue: 0.20),
-                         Color(red: 0.05, green: 0.04, blue: 0.09)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
+                colors: [Color(nsColor: .windowBackgroundColor),
+                         Color(nsColor: .underPageBackgroundColor)],
+                startPoint: .top, endPoint: .bottom
             )
-            // Accent glow behind the form (the functional highlight).
-            RadialGradient(colors: [Color.accentColor.opacity(0.22), .clear],
+            // The one accent glow, centered behind the form.
+            RadialGradient(colors: [Color.accentColor.opacity(0.18), .clear],
                            center: UnitPoint(x: 0.5, y: 0.30), startRadius: 0, endRadius: 540)
-            // On-brand violet glow, top-trailing.
-            RadialGradient(colors: [Color(red: 0.55, green: 0.30, blue: 0.95).opacity(0.20), .clear],
-                           center: .topTrailing, startRadius: 0, endRadius: 660)
-            // Faint pink grounding at the bottom for a touch of life.
-            RadialGradient(colors: [Color(red: 0.92, green: 0.28, blue: 0.52).opacity(0.10), .clear],
-                           center: .bottomLeading, startRadius: 0, endRadius: 560)
         }
         .ignoresSafeArea()
     }

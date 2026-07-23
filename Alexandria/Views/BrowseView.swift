@@ -1,11 +1,21 @@
 import SwiftUI
 
+/// "3 books" / "3 shows" — browse cards describe whatever the selected
+/// library holds, not always books.
+private func countLabel(_ count: Int, noun: String) -> String {
+    "\(count) \(noun)\(count == 1 ? "" : "s")"
+}
+
 // MARK: - Series (stacked-cover cards)
 
 struct SeriesGridView: View {
     @Environment(AppState.self) private var app
 
     private let columns = [GridItem(.adaptive(minimum: 200, maximum: 240), spacing: 28)]
+
+    private var mediaNoun: String {
+        app.libraries.first { $0.id == app.selectedLibraryID }?.mediaType == "podcast" ? "show" : "book"
+    }
 
     private struct SeriesGroup: Identifiable {
         let id: String
@@ -38,10 +48,11 @@ struct SeriesGridView: View {
                             Button {
                                 app.showGroup(kind: .series, value: group.name)
                             } label: {
-                                SeriesCard(name: group.name, count: group.count, coverIDs: group.coverItemIDs)
+                                SeriesCard(name: group.name, count: group.count,
+                                           coverIDs: group.coverItemIDs, noun: mediaNoun)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("\(group.name), \(group.count) books")
+                            .accessibilityLabel("\(group.name), \(countLabel(group.count, noun: mediaNoun))")
                         }
                     }
                     .padding(28)
@@ -57,6 +68,7 @@ struct SeriesCard: View {
     let name: String
     let count: Int
     let coverIDs: [String]
+    let noun: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -75,13 +87,13 @@ struct SeriesCard: View {
                 }
             }
             .frame(height: 210)
-            .hoverLift(cornerRadius: 8)
+            .hoverLift()
 
             HStack(spacing: 6) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                    Text("\(count) book\(count == 1 ? "" : "s")")
-                        .font(.caption).foregroundStyle(.secondary)
+                    Text(name).font(Theme.Typography.cardTitle).lineLimit(1)
+                    Text(countLabel(count, noun: noun))
+                        .font(Theme.Typography.meta).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             }
@@ -92,12 +104,12 @@ struct SeriesCard: View {
         RemoteImage(url: app.coverURL(itemID: id)) { image in
             image.resizable().aspectRatio(contentMode: .fit)
         } fallback: {
-            RoundedRectangle(cornerRadius: 8).fill(.quaternary)
+            RoundedRectangle(cornerRadius: Theme.Radius.cover).fill(.quaternary)
         }
         .frame(width: 160, height: 160)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
-        .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous).strokeBorder(Theme.hairline))
+        .themeShadow(Theme.Shadow.card)
     }
 }
 
@@ -108,6 +120,10 @@ struct PeopleGridView: View {
     let kind: AppState.Browse   // .authors or .narrators
 
     private let columns = [GridItem(.adaptive(minimum: 140, maximum: 180), spacing: 20)]
+
+    private var mediaNoun: String {
+        app.libraries.first { $0.id == app.selectedLibraryID }?.mediaType == "podcast" ? "show" : "book"
+    }
 
     private struct Person: Identifiable {
         let id: String           // name
@@ -149,10 +165,11 @@ struct PeopleGridView: View {
                             Button {
                                 app.showGroup(kind: kind, value: person.name)
                             } label: {
-                                PersonCard(name: person.name, count: person.count, imageURL: person.imageURL)
+                                PersonCard(name: person.name, count: person.count,
+                                           imageURL: person.imageURL, noun: mediaNoun)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("\(person.name), \(person.count) books")
+                            .accessibilityLabel("\(person.name), \(countLabel(person.count, noun: mediaNoun))")
                         }
                     }
                     .padding(28)
@@ -168,6 +185,7 @@ struct PersonCard: View {
     let name: String
     let count: Int
     let imageURL: URL?
+    let noun: String
 
     var body: some View {
         VStack(spacing: 10) {
@@ -178,10 +196,10 @@ struct PersonCard: View {
                 .hoverLift()
 
             VStack(spacing: 2) {
-                Text(name).font(.subheadline.weight(.semibold))
+                Text(name).font(Theme.Typography.cardTitle)
                     .multilineTextAlignment(.center).lineLimit(2)
-                Text("\(count) book\(count == 1 ? "" : "s")")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text(countLabel(count, noun: noun))
+                    .font(Theme.Typography.meta).foregroundStyle(.secondary)
             }
         }
     }

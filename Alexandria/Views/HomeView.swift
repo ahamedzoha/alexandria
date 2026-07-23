@@ -25,11 +25,13 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(item: $selected) { item in
-            ItemDetailView(item: item).frame(width: 560, height: 680)
+            ItemDetailView(item: item)
+                .frame(width: item.isPodcast ? 640 : 560, height: item.isPodcast ? 760 : 680)
         }
         .task(id: app.selectedLibraryID) {
             await app.loadStats()
             await app.loadRecentItems()
+            await app.refreshRecentEpisodes()
             withAnimation(reduceMotion ? nil : .smooth(duration: 0.5)) { appeared = true }
         }
     }
@@ -46,20 +48,29 @@ struct HomeView: View {
                 }
 
                 if let hero = app.heroContinueItem {
+                    // Full-bleed: the hero owns its own width cap + padding so
+                    // its palette wash can run edge-to-edge under the chrome.
                     section(1) {
                         HomeHeroCard(item: hero,
-                                     progress: app.progressByItem[hero.id],
+                                     progress: app.progress(itemID: hero.id),
+                                     maxContentWidth: contentMaxWidth,
                                      onPlay: { play(hero) },
                                      onOpen: { selected = hero })
-                            .modifier(CenteredContent(maxWidth: contentMaxWidth))
                     }
                 }
 
-                shelf(2, "Continue Listening", "headphones",
+                if !app.recentEpisodes.isEmpty {
+                    section(2) {
+                        EpisodeShelf(title: "Latest Episodes",
+                                     symbol: "dot.radiowaves.left.and.right",
+                                     episodes: app.recentEpisodes)
+                    }
+                }
+                shelf(3, "Continue Listening", "headphones",
                       Array(app.continueListening.dropFirst()), .inProgress)
-                shelf(3, "Discover", "sparkles", app.discoverPicks, .notStarted)
-                shelf(4, "Listen Again", "arrow.counterclockwise", app.recentlyFinished, .finished)
-                shelf(5, "Recently Added", "clock.badge.plus", app.recentItems, .all)
+                shelf(4, "Discover", "sparkles", app.discoverPicks, .notStarted)
+                shelf(5, "Listen Again", "arrow.counterclockwise", app.recentlyFinished, .finished)
+                shelf(6, "Recently Added", "clock.badge.plus", app.recentItems, .all)
             }
             .padding(.vertical, Theme.Space.xl)
         }
@@ -78,15 +89,16 @@ struct HomeView: View {
         }
     }
 
-    // Entrance stagger: sections rise + fade in sequence; opacity-only under
-    // Reduce Motion.
+    // Entrance stagger: sections rise + fade in sequence, whole cascade capped
+    // at 0.5s (0.35s spring + delays capped at 0.15s). Opacity-only crossfade,
+    // no stagger, under Reduce Motion.
     @ViewBuilder
     private func section<V: View>(_ index: Int, @ViewBuilder _ content: () -> V) -> some View {
         content()
             .opacity(appeared ? 1 : 0)
             .offset(y: (appeared || reduceMotion) ? 0 : 16)
             .animation(reduceMotion ? .easeOut(duration: 0.2)
-                                    : .smooth(duration: 0.5).delay(Double(index) * 0.06),
+                                    : .smooth(duration: 0.35).delay(min(Double(index) * 0.04, 0.15)),
                        value: appeared)
     }
 

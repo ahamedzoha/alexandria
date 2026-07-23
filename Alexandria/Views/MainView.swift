@@ -32,9 +32,12 @@ struct MainView: View {
                     }
                 }
                 Section("Browse") {
-                    Label("Authors", systemImage: "person").tag(SidebarSelection.authors)
-                    Label("Series", systemImage: "books.vertical").tag(SidebarSelection.series)
-                    Label("Narrators", systemImage: "mic").tag(SidebarSelection.narrators)
+                    // Book-only groupings; podcasts have no authors/series/narrators.
+                    if !selectedLibraryIsPodcast {
+                        Label("Authors", systemImage: "person").tag(SidebarSelection.authors)
+                        Label("Series", systemImage: "books.vertical").tag(SidebarSelection.series)
+                        Label("Narrators", systemImage: "mic").tag(SidebarSelection.narrators)
+                    }
                     Label("Stats", systemImage: "chart.bar").tag(SidebarSelection.stats)
                 }
             }
@@ -112,7 +115,7 @@ struct MainView: View {
         }
         .sheet(item: $searchSelection) { item in
             ItemDetailView(item: item)
-                .frame(width: 560, height: 680)
+                .frame(width: item.isPodcast ? 640 : 560, height: item.isPodcast ? 760 : 680)
         }
     }
 
@@ -192,7 +195,7 @@ struct MainView: View {
                 .font(.system(size: 13))
             SearchField(
                 text: Binding(get: { app.searchText }, set: { app.searchText = $0 }),
-                placeholder: "Search books",
+                placeholder: "Search library",
                 focusTrigger: searchFocusTrigger,
                 blurTrigger: searchBlurTrigger,
                 onMoveDown: { moveHighlight(1) },
@@ -349,5 +352,9 @@ struct MainView: View {
 
     private func icon(for library: Library) -> String {
         library.mediaType == "podcast" ? "antenna.radiowaves.left.and.right" : "books.vertical"
+    }
+
+    private var selectedLibraryIsPodcast: Bool {
+        app.libraries.first { $0.id == app.selectedLibraryID }?.mediaType == "podcast"
     }
 }

@@ -58,9 +58,9 @@ struct SearchDropdown: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                .strokeBorder(Theme.hairline, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
+        .themeShadow(Theme.Shadow.lifted)
     }
 
     private var header: some View {
@@ -196,7 +196,7 @@ private struct SearchResultRow: View {
     }
 
     @ViewBuilder private var progressBadge: some View {
-        let p = app.progressByItem[item.id]
+        let p = app.progress(itemID: item.id)
         if p?.isFinished == true {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)

@@ -9,7 +9,7 @@ are free to use when covering the app.
 |---|---|
 | **Name** | Alexandria |
 | **Tagline** | A beautiful, native macOS client for your audiobookshelf library. |
-| **Platform** | macOS 14 (Sonoma) or later |
+| **Platform** | macOS 26 (Tahoe) or later |
 | **Category** | Audiobooks / media player |
 | **Price** | Free · open source |
 | **Built with** | SwiftUI, AVFoundation, MediaPlayer |
@@ -46,7 +46,7 @@ keyboard-driven **search** (⌘F), browsing by **author / series / narrator**, a
 dashboard**, and **multi-server** support.
 
 Alexandria is written in SwiftUI for macOS, adopting the macOS 26 Liquid Glass design
-language where available while still running on macOS 14+.
+language natively — the app requires macOS 26.
 
 ## Key features
 

@@ -7,38 +7,100 @@ struct ItemDetailView: View {
     let item: LibraryItem
 
     @State private var detail: ItemDetail?
-    @State private var loading = false
     @State private var descriptionExpanded = false
     @State private var chaptersExpanded = false
+    /// True while the Play/Resume tap is building a session — the button
+    /// disables so a slow server can't collect duplicate taps.
+    @State private var launchingPlayback = false
 
     private var coverURL: URL? {
         app.downloads.localCoverURL(item.id) ?? app.coverURL(itemID: item.id)
     }
-    private var progress: AppState.ItemProgress? { app.progressByItem[item.id] }
+    private var progress: AppState.ItemProgress? { app.progress(itemID: item.id) }
     private var meta: ItemDetail.Media.Meta? { detail?.media?.metadata }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                header
-                infoGrid
-                progressCard
-                descriptionSection
-                sectionRows
+            if item.isPodcast {
+                podcastContent
+            } else {
+                bookContent
             }
-            .padding(24)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(background)
         .overlay(alignment: .topTrailing) { closeButton }
-        .task { detail = await app.itemDetail(itemID: item.id) }
+        .task {
+            if item.isPodcast {
+                await app.loadEpisodes(itemID: item.id)
+            } else {
+                detail = await app.itemDetail(itemID: item.id)
+            }
+        }
     }
 
-    // MARK: Background (subtle cover bleed, fading to dark)
+    private var bookContent: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            header
+            infoGrid
+            progressCard
+            descriptionSection
+            sectionRows
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Podcast layout (episode list instead of chapters/tracks)
+
+    private var podcastContent: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            podcastHeader
+            podcastDescription
+            EpisodeListView(item: item)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var podcastHeader: some View {
+        HStack(alignment: .top, spacing: 18) {
+            coverArt
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.title).font(.title.bold())
+                Text(item.author).font(.title3).foregroundStyle(.secondary)
+                if let count = app.episodes(for: item.id)?.count ?? item.numEpisodes {
+                    Label("\(count) episode\(count == 1 ? "" : "s")",
+                          systemImage: "antenna.radiowaves.left.and.right")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder private var podcastDescription: some View {
+        if let description = item.media?.metadata?.description, !description.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(cleaned(description))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(descriptionExpanded ? nil : 4)
+                    .textSelection(.enabled)
+                Button(descriptionExpanded ? "Read less" : "Read more") {
+                    withAnimation(.easeInOut(duration: 0.2)) { descriptionExpanded.toggle() }
+                }
+                .buttonStyle(.link)
+                .font(.callout)
+            }
+        }
+    }
+
+    // MARK: Background (subtle cover bleed, fading into the window background)
 
     private var background: some View {
         ZStack(alignment: .top) {
-            Color(white: 0.09)
+            Color(nsColor: .windowBackgroundColor)
             RemoteImage(url: coverURL) { image in
                 image.resizable().scaledToFill()
             } fallback: {
@@ -57,19 +119,23 @@ struct ItemDetailView: View {
 
     // MARK: Header
 
+    private var coverArt: some View {
+        RemoteImage(url: coverURL) { image in
+            image.resizable().aspectRatio(contentMode: .fit)
+        } fallback: {
+            RoundedRectangle(cornerRadius: 10).fill(.ultraThinMaterial)
+                .overlay(Image(systemName: "headphones").font(.largeTitle).foregroundStyle(.secondary))
+        }
+        .frame(width: 150, height: 150)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
+        .themeShadow(Theme.Shadow.lifted)
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top, spacing: 18) {
-                RemoteImage(url: coverURL) { image in
-                    image.resizable().aspectRatio(contentMode: .fit)
-                } fallback: {
-                    RoundedRectangle(cornerRadius: 10).fill(.ultraThinMaterial)
-                        .overlay(Image(systemName: "headphones").font(.largeTitle).foregroundStyle(.secondary))
-                }
-                .frame(width: 150, height: 150)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.white.opacity(0.12)))
-                .shadow(color: .black.opacity(0.5), radius: 16, y: 8)
+                coverArt
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(item.title).font(.title.bold())
@@ -92,13 +158,19 @@ struct ItemDetailView: View {
 
     private var buttons: some View {
         HStack(spacing: 10) {
-            Button(action: startPlayback) {
+            Button {
+                launchingPlayback = true
+                startPlayback(item: item, app: app, player: player) { success in
+                    launchingPlayback = false
+                    if success { dismiss() }
+                }
+            } label: {
                 Label(playLabel, systemImage: "play.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(loading)
+            .disabled(launchingPlayback)
 
             downloadButton
         }
@@ -134,7 +206,6 @@ struct ItemDetailView: View {
     }
 
     private var playLabel: String {
-        if loading { return "Loading…" }
         if let progress, progress.fraction > 0.001, !progress.isFinished { return "Resume" }
         return "Play"
     }
@@ -184,7 +255,7 @@ struct ItemDetailView: View {
                 }
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.15))
+                        Capsule().fill(.quaternary)
                         Capsule()
                             .fill(progress.isFinished ? Color.green : Color.accentColor)
                             .frame(width: max(4, geo.size.width * progress.fraction))
@@ -242,13 +313,13 @@ struct ItemDetailView: View {
                                         .frame(width: 34, alignment: .leading)
                                     Text(chapter.title ?? "Chapter \(index + 1)").lineLimit(1)
                                     Spacer()
-                                    Text(timestamp(chapter.start ?? 0))
+                                    Text(Format.timestamp(chapter.start ?? 0))
                                         .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                                 }
                                 .font(.callout)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 7)
-                                .background(index.isMultiple(of: 2) ? Color.white.opacity(0.03) : .clear)
+                                .background(index.isMultiple(of: 2) ? Color.primary.opacity(0.03) : .clear)
                             }
                         }
                     }
@@ -271,7 +342,7 @@ struct ItemDetailView: View {
             Text("\(count)")
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 8).padding(.vertical, 2)
-                .background(.white.opacity(0.12), in: Capsule())
+                .background(.quaternary, in: Capsule())
             Spacer()
             Image(systemName: chevron).foregroundStyle(.secondary)
         }
@@ -285,7 +356,7 @@ struct ItemDetailView: View {
             Text("\(count)")
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 8).padding(.vertical, 2)
-                .background(.white.opacity(0.12), in: Capsule())
+                .background(.quaternary, in: Capsule())
             Spacer()
         }
         .padding(14)
@@ -296,7 +367,7 @@ struct ItemDetailView: View {
         Button { dismiss() } label: {
             Image(systemName: "xmark")
                 .font(.callout.weight(.bold))
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(.primary)
                 .padding(8)
                 .navGlassCircle()
         }
@@ -308,30 +379,6 @@ struct ItemDetailView: View {
 
     // MARK: Helpers
 
-    private func startPlayback() {
-        loading = true
-        Task {
-            let local = app.downloads.localSession(for: item.id)
-            let info: PlaybackInfo?
-            let cover: URL?
-            if let local {
-                info = local
-                cover = app.downloads.localCoverURL(item.id)
-            } else {
-                info = await app.playSession(itemID: item.id)
-                cover = app.coverURL(itemID: item.id)
-            }
-            if let info {
-                player.load(session: info, itemID: item.id, serverURL: app.serverURL,
-                            token: app.token, title: item.title, author: item.author, cover: cover)
-                loading = false
-                dismiss()
-            } else {
-                loading = false
-            }
-        }
-    }
-
     private func cleaned(_ html: String) -> String {
         html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
             .replacingOccurrences(of: "&quot;", with: "\"")
@@ -340,24 +387,4 @@ struct ItemDetailView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func timestamp(_ seconds: Double) -> String {
-        let x = Int(seconds)
-        let h = x / 3600, m = (x % 3600) / 60, s = x % 60
-        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
-    }
-}
-
-func durationString(_ seconds: Double?) -> String? {
-    guard let seconds, seconds > 0 else { return nil }
-    let total = Int(seconds)
-    let hours = total / 3600
-    let minutes = (total % 3600) / 60
-    if hours > 0 && minutes > 0 { return "\(hours) hr \(minutes) min" }
-    if hours > 0 { return "\(hours) hr" }
-    return "\(minutes) min"
-}
-
-func sizeString(_ bytes: Double?) -> String? {
-    guard let bytes, bytes > 0 else { return nil }
-    return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
 }

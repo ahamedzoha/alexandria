@@ -14,8 +14,7 @@ struct GreetingHeader: View {
                     .textCase(.uppercase)
                     .foregroundStyle(.secondary)
                 Text(greeting)
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
+                    .font(Theme.Typography.heroTitle)
                 Text(app.heroContinueItem != nil ? "Pick up where you left off." : "Find your next listen.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
@@ -88,33 +87,91 @@ struct CompletionRing: View {
     }
 }
 
-/// The featured "Continue" card — one-tap resume of the most-recent in-progress book.
+/// The continue-listening hero — the Home showcase moment. Large artwork on the
+/// left; behind the whole section, a soft artwork-derived wash that bleeds
+/// edge-to-edge and slides under the sidebar/toolbar via
+/// `.backgroundExtensionEffect()`. Title/author/accent pick up the artwork
+/// palette when extraction has landed, falling back to semantic styling —
+/// render never blocks on extraction. The Resume button is the one tinted
+/// control on the page.
 struct HomeHeroCard: View {
     @Environment(AppState.self) private var app
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     let item: LibraryItem
     let progress: AppState.ItemProgress?
+    var maxContentWidth: CGFloat = 1400
     let onPlay: () -> Void
     let onOpen: () -> Void
 
+    @State private var palette: ArtworkPalette?
+
+    private var coverURL: URL? { app.coverURL(itemID: item.id) }
+
+    /// Palette text colors are guaranteed readable against the solid artwork
+    /// background — but the wash is soft, so the system background shows
+    /// through. In light appearance the wash is barely there, so text stays
+    /// semantic (`.neutral`); in dark, adopt the palette only when its tone
+    /// agrees with the scheme, per the ArtworkPalette `isDark` guidance.
+    private var text: ArtworkPalette {
+        guard colorScheme == .dark, let palette, palette.isDark else { return .neutral }
+        return palette
+    }
+
+    /// THE one tinted control: the palette accent, unless its contrast against
+    /// the white prominent-button label drops below ~3.0 — then the app accent.
+    private var resumeTint: Color {
+        guard let accent = palette?.accent,
+              ArtworkPalette.contrastRatio(accent, .white) >= 3.0 else { return .accentColor }
+        return accent
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Space.l) {
+        // ZStack + id swap so a hero change crossfades old/new in place —
+        // opacity only, gentle .smooth spring, no slide theatrics.
+        ZStack {
+            heroRow
+                .id(item.id)
+                .transition(.opacity)
+        }
+        .frame(maxWidth: maxContentWidth, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.Space.xl)
+        .padding(.vertical, Theme.Space.l)
+        .background { wash }
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.45), value: item.id)
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.45), value: palette)
+        .task(id: coverURL) {
+            palette = await PaletteStore.shared.palette(for: coverURL)
+        }
+    }
+
+    private var heroRow: some View {
+        HStack(alignment: .center, spacing: Theme.Space.l + 4) {
             Button(action: onOpen) {
-                CoverArt(url: app.coverURL(itemID: item.id), title: item.title)
-                    .frame(width: 150, height: 150)
+                CoverArt(url: coverURL, title: item.title)
+                    .frame(width: 180, height: 180)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous)
                         .strokeBorder(Theme.hairline))
             }
             .buttonStyle(.plain)
-            .hoverLift(cornerRadius: Theme.Radius.cover)
+            .hoverLift()
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("CONTINUE")
+                Text("Continue")
                     .font(.caption.weight(.semibold))
+                    .textCase(.uppercase)
                     .tracking(1.2)
-                    .foregroundStyle(.secondary)
-                Text(item.title).font(.title2.bold()).lineLimit(2)
-                Text(item.author).font(.title3).foregroundStyle(.secondary).lineLimit(1)
+                    .foregroundStyle(text.secondaryText)
+                Text(item.title)
+                    .font(.title.bold())
+                    .lineLimit(2)
+                    .foregroundStyle(text.primaryText)
+                Text(item.author)
+                    .font(.title3)
+                    .lineLimit(1)
+                    .foregroundStyle(text.secondaryText)
                 progressStrip
                 HStack(spacing: 10) {
                     Button(action: onPlay) {
@@ -122,7 +179,7 @@ struct HomeHeroCard: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .tint(.accentColor)
+                    .tint(resumeTint)   // THE one tinted control
                     Button("Details", action: onOpen)
                         .buttonStyle(.bordered)
                         .controlSize(.large)
@@ -131,25 +188,50 @@ struct HomeHeroCard: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(Theme.Space.l)
-        .contentCard(cornerRadius: Theme.Radius.card)
         .accessibilityElement(children: .combine)
     }
 
+    /// Soft artwork-tinted wash behind the section. Fades toward the page below
+    /// and extends under the sidebar/toolbar edges; absent (plain background)
+    /// until the palette lands. Light appearance gets a much fainter wash that
+    /// fades to clear — at dark-mode strength it reads as a muddy band against
+    /// the bright window background.
+    @ViewBuilder private var wash: some View {
+        if let palette {
+            LinearGradient(
+                colors: colorScheme == .light
+                    ? [palette.background.opacity(0.22), .clear]
+                    : [palette.background.opacity(0.45), palette.background.opacity(0.08)],
+                startPoint: .top, endPoint: .bottom
+            )
+            .backgroundExtensionEffect()
+            .allowsHitTesting(false)
+            .transition(.opacity)
+        }
+    }
+
+    /// Thin accent progress line + ticking time-remaining readout.
     private var progressStrip: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.primary.opacity(0.12))
+                    Capsule().fill(.quaternary)
                     Capsule()
-                        .fill(LinearGradient(colors: [.accentColor, .accentColor.opacity(0.7)],
-                                             startPoint: .leading, endPoint: .trailing))
-                        .frame(width: max(6, geo.size.width * (progress?.fraction ?? 0)))
+                        .fill(palette?.accent ?? .accentColor)
+                        .frame(width: max(4, geo.size.width * (progress?.fraction ?? 0)))
                 }
             }
-            .frame(height: 6)
-            Text(remainingLabel).font(.caption).foregroundStyle(.secondary)
+            .frame(height: 4)
+            Text(remainingLabel)
+                .font(.caption)
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .foregroundStyle(text.secondaryText)
         }
+        .frame(maxWidth: 420, alignment: .leading)
+        .padding(.top, 2)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: remainingLabel)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: progress?.fraction ?? 0)
     }
 
     private var remainingLabel: String {

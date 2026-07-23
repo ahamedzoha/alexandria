@@ -87,8 +87,8 @@ release.
 
 ## CI note (Xcode version)
 
-The app uses macOS 26 (Liquid Glass) APIs guarded by `#available`. Compiling them
-needs the **macOS 26 SDK (Xcode 26+)**. The workflow selects `latest-stable`; if
+The app requires macOS 26 and uses its (Liquid Glass) APIs unconditionally.
+Compiling it needs the **macOS 26 SDK (Xcode 26+)**. The workflow selects `latest-stable`; if
 GitHub's runners don't have Xcode 26 yet, the CI build will fail to compile the
 glass code — until then, cut releases locally with `Scripts/package.sh` (your Mac
 has Xcode 26). Bump nothing else; CI will start working once the runner image
