@@ -109,3 +109,13 @@ catches up.
    (Store the Apple ID / app-specific password as GitHub **Secrets** for CI.)
 
 Once notarized, drop the right-click-to-open instructions — the DMG just opens.
+
+## Hardened Runtime gotcha (ad-hoc + Sparkle)
+
+`ENABLE_HARDENED_RUNTIME` is **deliberately NO**: hardened runtime enables
+library validation, which requires every embedded framework (Sparkle) to be
+signed by the *same team* — impossible with ad-hoc signatures, so the app
+crashes at launch with `Library not loaded … different Team IDs`. Hardened
+runtime only matters for notarization; re-enable it **when** the app moves to
+Developer ID signing + notarization (Sparkle will then share the team identity
+and library validation passes).
