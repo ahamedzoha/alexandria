@@ -16,22 +16,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Alexandria uses macOS 26 SDK APIs (glassEffect, gated behind #available),
-      # so the build needs Xcode 26+. `latest-stable` picks the newest Xcode on
-      # the runner; if that toolchain is still older than 26 the build will fail
-      # to compile the glass code — until GitHub ships a macOS 26 image, cut
-      # releases with `Scripts/package.sh` on your Mac instead.
+      # Alexandria requires macOS 26 and uses its SDK APIs (glassEffect)
+      # unconditionally, so the build needs Xcode 26+. `latest-stable` picks the
+      # newest Xcode on the runner; if that toolchain is still older than 26 the
+      # build will fail to compile the glass code — until GitHub ships a macOS 26
+      # image, cut releases with `Scripts/package.sh` on your Mac instead.
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
 
-      - name: Build DMG
+      - name: Resolve packages (Sparkle tools)
+        run: xcodebuild -project Alexandria.xcodeproj -resolvePackageDependencies
+
+      # Sparkle EdDSA signing: export the private key once with
+      #   generate_keys -x sparkle_ed_private_key
+      # and add its contents as the SPARKLE_ED_PRIVATE_KEY repo secret. Without
+      # it the DMG still builds but is not offered as an auto-update.
+      - name: Build DMG + appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: Scripts/package.sh "${GITHUB_REF_NAME#v}"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/*.dmg
+          files: |
+            build/*.dmg
+            build/appcast.xml
           generate_release_notes: true
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false

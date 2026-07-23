@@ -78,3 +78,47 @@ hdiutil create \
 
 rm -rf "$STAGING"
 echo "✓ $DMG"
+
+# --- 3. Sparkle appcast: sign the DMG and emit appcast.xml ---------------------
+# Sparkle's tools live inside the resolved SPM artifact. The EdDSA private key
+# is read from the login Keychain (created once with generate_keys); in CI it
+# can instead come from the SPARKLE_ED_PRIVATE_KEY env var (add it as a repo
+# secret exported from `generate_keys -x`). If neither is available the DMG is
+# still produced — it just won't auto-update, and a warning is printed.
+echo "▸ Signing update for Sparkle…"
+SPARKLE_BIN="$(find "$HOME/Library/Developer/Xcode/DerivedData" \
+  -path "*artifacts*sparkle*" -name sign_update -print -quit 2>/dev/null | xargs dirname 2>/dev/null || true)"
+if [ -z "$SPARKLE_BIN" ]; then
+  echo "⚠ Sparkle tools not found (resolve packages first: xcodebuild -resolvePackageDependencies)."
+  echo "  Skipping appcast generation — this build will NOT be offered as an auto-update."
+else
+  if [ -n "${SPARKLE_ED_PRIVATE_KEY:-}" ]; then
+    SIG_LINE="$(echo "$SPARKLE_ED_PRIVATE_KEY" | "$SPARKLE_BIN/sign_update" --ed-key-file - "$DMG")"
+  else
+    SIG_LINE="$("$SPARKLE_BIN/sign_update" "$DMG")"
+  fi
+  # sign_update prints: sparkle:edSignature="…" length="…"
+  PUB_DATE="$(LC_ALL=en_US.UTF-8 date -u "+%a, %d %b %Y %H:%M:%S +0000")"
+  cat > "$BUILD_DIR/appcast.xml" <<APPCAST
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Alexandria</title>
+    <item>
+      <title>$VERSION</title>
+      <pubDate>$PUB_DATE</pubDate>
+      <sparkle:version>$VERSION</sparkle:version>
+      <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <link>https://github.com/ahamedzoha/alexandria/releases</link>
+      <enclosure
+        url="https://github.com/ahamedzoha/alexandria/releases/download/v$VERSION/$APP-$VERSION.dmg"
+        $SIG_LINE
+        type="application/octet-stream"/>
+    </item>
+  </channel>
+</rss>
+APPCAST
+  echo "✓ $BUILD_DIR/appcast.xml"
+  echo "  Upload BOTH the DMG and appcast.xml as assets of release v$VERSION."
+fi

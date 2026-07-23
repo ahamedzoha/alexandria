@@ -4,9 +4,12 @@ import SwiftUI
 struct AlexandriaApp: App {
     @State private var app = AppState()
     @State private var player = PlayerEngine()
+    @StateObject private var updater = UpdaterModel()
 
     var body: some Scene {
-        WindowGroup {
+        // Identified so the menu-bar mini player can reopen it via
+        // openWindow(id: "main") after the last window closes.
+        WindowGroup(id: "main") {
             RootView()
                 .environment(app)
                 .environment(player)
@@ -14,6 +17,9 @@ struct AlexandriaApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesButton(updater: updater)
+            }
             CommandGroup(after: .textEditing) {
                 Button("Find") { app.focusSearchRequested = true }
                     .keyboardShortcut("f", modifiers: .command)
@@ -32,6 +38,11 @@ struct AlexandriaApp: App {
                 Button("Previous Chapter") { player.prevChapter() }
                     .keyboardShortcut(.leftArrow, modifiers: .command)
                     .disabled(player.chapters.isEmpty)
+                Divider()
+                Toggle("Auto-Play Next Episode", isOn: Binding(
+                    get: { app.autoPlayNextEpisodes },
+                    set: { app.autoPlayNextEpisodes = $0 }
+                ))
             }
         }
 
