@@ -8,10 +8,10 @@ extension AppState {
     var continueListening: [LibraryItem] {
         items
             .filter {
-                let p = progressByItem[$0.id]
+                let p = progress(itemID: $0.id)
                 return (p?.fraction ?? 0) > 0.001 && !(p?.isFinished ?? false)
             }
-            .sorted { (progressByItem[$0.id]?.lastUpdate ?? 0) > (progressByItem[$1.id]?.lastUpdate ?? 0) }
+            .sorted { (progress(itemID: $0.id)?.lastUpdate ?? 0) > (progress(itemID: $1.id)?.lastUpdate ?? 0) }
     }
 
     /// The single most-recently-played in-progress book (drives the hero card).
@@ -20,8 +20,8 @@ extension AppState {
     /// Finished books, most-recently-finished first.
     var recentlyFinished: [LibraryItem] {
         items
-            .filter { progressByItem[$0.id]?.isFinished ?? false }
-            .sorted { (progressByItem[$0.id]?.lastUpdate ?? 0) > (progressByItem[$1.id]?.lastUpdate ?? 0) }
+            .filter { progress(itemID: $0.id)?.isFinished ?? false }
+            .sorted { (progress(itemID: $0.id)?.lastUpdate ?? 0) > (progress(itemID: $1.id)?.lastUpdate ?? 0) }
     }
 
     /// A stable daily sample of untouched books for the Discover shelf. Seeded
@@ -31,7 +31,7 @@ extension AppState {
         return Array(
             items
                 .filter {
-                    let p = progressByItem[$0.id]
+                    let p = progress(itemID: $0.id)
                     return (p?.fraction ?? 0) <= 0.001 && !(p?.isFinished ?? false)
                 }
                 .shuffled(using: &gen)
@@ -42,12 +42,12 @@ extension AppState {
     // Scoped to the loaded library (not global progress) so the counts stay
     // consistent with the shelves and the completion ring never exceeds 100%.
     var finishedCount: Int {
-        items.filter { progressByItem[$0.id]?.isFinished ?? false }.count
+        items.filter { progress(itemID: $0.id)?.isFinished ?? false }.count
     }
 
     var inProgressCount: Int {
         items.filter {
-            let p = progressByItem[$0.id]
+            let p = progress(itemID: $0.id)
             return (p?.fraction ?? 0) > 0.001 && !(p?.isFinished ?? false)
         }.count
     }
@@ -62,7 +62,33 @@ extension AppState {
 
     /// Approximate personal hours listened, summed over loaded items.
     var listenedHours: Double {
-        items.reduce(0.0) { $0 + (progressByItem[$1.id]?.fraction ?? 0) * ($1.duration ?? 0) } / 3600
+        items.reduce(0.0) { $0 + (progress(itemID: $1.id)?.fraction ?? 0) * ($1.duration ?? 0) } / 3600
+    }
+
+    /// Podcast episodes for the Home "Latest Episodes" shelf, derived from the
+    /// raw server fetch (`fetchedRecentEpisodes`). In-progress episodes
+    /// (0 < fraction < 1 in `progressByItem`) sort FIRST, most recently played
+    /// first, so Home always offers a resume surface; the rest follow newest-
+    /// published first (`sortDate`). Finished episodes drop out.
+    var recentEpisodes: [PodcastEpisode] {
+        // lastUpdate when the episode is in progress, nil otherwise.
+        func resumeStamp(_ episode: PodcastEpisode) -> Double? {
+            guard let itemID = episode.libraryItemId,
+                  let p = progress(itemID: itemID, episodeID: episode.id),
+                  p.fraction > 0, p.fraction < 1, !p.isFinished else { return nil }
+            return p.lastUpdate
+        }
+        let unfinished = fetchedRecentEpisodes.filter { episode in
+            guard let itemID = episode.libraryItemId else { return true }
+            return !(progress(itemID: itemID, episodeID: episode.id)?.isFinished ?? false)
+        }
+        let inProgress = unfinished
+            .filter { resumeStamp($0) != nil }
+            .sorted { (resumeStamp($0) ?? 0) > (resumeStamp($1) ?? 0) }
+        let fresh = unfinished
+            .filter { resumeStamp($0) == nil }
+            .sorted { $0.sortDate > $1.sortDate }
+        return Array((inProgress + fresh).prefix(20))
     }
 }
 

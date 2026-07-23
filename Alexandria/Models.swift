@@ -30,6 +30,7 @@ struct ItemsResponse: Decodable, Sendable {
 
 struct LibraryItem: Decodable, Identifiable, Sendable, Hashable {
     let id: String
+    let mediaType: String?   // "book" | "podcast"
     let media: Media?
     let addedAt: Double?   // epoch ms; powers the Recently Added shelf
 
@@ -37,19 +38,24 @@ struct LibraryItem: Decodable, Identifiable, Sendable, Hashable {
         let metadata: Metadata?
         let duration: Double?
         let numTracks: Int?
+        let numEpisodes: Int?   // Podcast Minified only
     }
 
     struct Metadata: Decodable, Sendable, Hashable {
         let title: String?
         let authorName: String?
+        let author: String?       // podcasts use a plain author string
         let narratorName: String?
         let seriesName: String?
+        let description: String?
     }
 
     var title: String { media?.metadata?.title ?? "Untitled" }
-    var author: String { media?.metadata?.authorName ?? "Unknown author" }
+    var author: String { media?.metadata?.authorName ?? media?.metadata?.author ?? "Unknown author" }
     var narrator: String? { media?.metadata?.narratorName }
     var duration: Double? { media?.duration }
+    var numEpisodes: Int? { media?.numEpisodes }
+    var isPodcast: Bool { mediaType == "podcast" }
 
     /// "Harry Potter #2" -> "Harry Potter" (drops the trailing sequence number).
     var seriesBaseName: String? {
@@ -80,6 +86,9 @@ struct PlayRequest: Encodable, Sendable {
 
 struct PlaybackInfo: Decodable, Sendable {
     let id: String?
+    // Set on podcast episode sessions. Defaulted var so DownloadStore's
+    // memberwise rebuild of offline sessions keeps compiling.
+    var episodeId: String? = nil
     let audioTracks: [AudioTrack]
     let chapters: [Chapter]?
     let currentTime: Double?
@@ -99,13 +108,6 @@ struct PlaybackInfo: Decodable, Sendable {
         let end: Double?
         let title: String?
     }
-}
-
-struct ProgressUpdate: Encodable, Sendable {
-    let currentTime: Double
-    let duration: Double
-    let progress: Double
-    let isFinished: Bool
 }
 
 // MARK: - Authors
@@ -194,6 +196,7 @@ struct MeResponse: Decodable, Sendable {
 
 struct MediaProgress: Decodable, Sendable {
     let libraryItemId: String?
+    let episodeId: String?   // set for podcast episode progress
     let progress: Double?
     let isFinished: Bool?
     let lastUpdate: Double?   // epoch ms; powers "jump back in" ordering

@@ -1,15 +1,6 @@
 import SwiftUI
 import AppKit
 
-/// Process-wide cache of decoded cover images.
-enum CoverCache {
-    static let shared: NSCache<NSString, NSImage> = {
-        let c = NSCache<NSString, NSImage>()
-        c.countLimit = 500
-        return c
-    }()
-}
-
 @MainActor
 @Observable
 final class ImageLoader {
@@ -27,8 +18,7 @@ final class ImageLoader {
         // Already showing this URL's result.
         if loadedURL == url, case .loaded = state { return }
 
-        let key = url.absoluteString as NSString
-        if let cached = CoverCache.shared.object(forKey: key) {
+        if let cached = CoverCache.shared.cachedImage(for: url) {
             loadedURL = url
             state = .loaded(cached)
             return
@@ -36,8 +26,9 @@ final class ImageLoader {
 
         // Local (downloaded) cover files.
         if url.isFileURL {
-            if let image = NSImage(contentsOf: url) {
-                CoverCache.shared.setObject(image, forKey: key)
+            let image = await CoverCache.shared.image(for: url)
+            if Task.isCancelled { return }
+            if let image {
                 loadedURL = url
                 state = .loaded(image)
             } else {
@@ -47,31 +38,19 @@ final class ImageLoader {
         }
 
         state = .loading
-        // Retry a few times — self-hosted servers drop bursts of parallel requests.
-        for attempt in 0..<3 {
-            if Task.isCancelled { return }
-            do {
-                let (data, response) = try await URLSession.shared.data(from: url)
-                if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                    throw URLError(.badServerResponse)
-                }
-                if let image = NSImage(data: data) {
-                    CoverCache.shared.setObject(image, forKey: key)
-                    loadedURL = url
-                    withAnimation(.easeOut(duration: 0.25)) { state = .loaded(image) }
-                    return
-                }
-            } catch {
-                if Task.isCancelled { return }
-            }
-            try? await Task.sleep(nanoseconds: UInt64(200_000_000) * UInt64(attempt + 1))
+        let image = await CoverCache.shared.image(for: url)
+        if Task.isCancelled { return }
+        if let image {
+            loadedURL = url
+            withAnimation(.easeOut(duration: 0.25)) { state = .loaded(image) }
+        } else {
+            state = .failed
         }
-        state = .failed
     }
 }
 
-/// Drop-in replacement for AsyncImage that caches decoded images and retries
-/// transient failures, so cover art doesn't randomly drop out under load.
+/// Drop-in replacement for AsyncImage that caches decoded images (memory + disk)
+/// and retries transient failures, so cover art doesn't randomly drop out under load.
 struct RemoteImage<Success: View, Fallback: View>: View {
     let url: URL?
     @ViewBuilder var success: (Image) -> Success

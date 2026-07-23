@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -9,6 +10,9 @@ final class AppState {
         var isFinished: Bool
         var lastUpdate: Double = 0   // epoch ms of the last progress update
     }
+
+    // Progress is keyed per item + episode (episodeID nil for book/item-level).
+    struct ProgressKey: Hashable { let itemID: String; let episodeID: String? }
 
     struct ServerRef: Codable, Identifiable, Sendable {
         let id: String
@@ -47,7 +51,8 @@ final class AppState {
         case stats
     }
 
-    // Servers (tokens live in the Keychain, keyed by server id)
+    // Servers (tokens live in UserDefaults, keyed by server id — see tokenKey).
+    // TODO: move tokens to the Keychain once Developer ID signing lands.
     var servers: [ServerRef] = []
     var activeServerID: String?
 
@@ -56,8 +61,24 @@ final class AppState {
     var selectedLibraryID: String?
     var items: [LibraryItem] = []
     var recentItems: [LibraryItem] = []   // newest-added, for the Home shelf
-    var progressByItem: [String: ItemProgress] = [:]
+    var progressByItem: [ProgressKey: ItemProgress] = [:]
+    // Podcast episode lists, keyed by library item id (nil until loaded).
+    var episodesByItem: [String: [PodcastEpisode]] = [:]
+    // Items whose last loadEpisodes fetch failed, so the episode list UI can
+    // show a retry state. Cleared when a (re)load succeeds.
+    var episodesLoadFailed: Set<String> = []
+    // Latest episodes across podcast libraries as fetched from the server.
+    // HomeData's `recentEpisodes` re-orders these for the Home shelf.
+    var fetchedRecentEpisodes: [PodcastEpisode] = []
     let downloads = DownloadStore()
+    // Items fetched individually via resolveItem (auto-play/next-episode
+    // targets that aren't in `items` or `recentItems`), keyed by id.
+    @ObservationIgnored private var itemsByID: [String: LibraryItem] = [:]
+    // In-flight server progress write per (item, episode) — see enqueueProgressPatch.
+    @ObservationIgnored private var progressPatchTasks: [ProgressKey: Task<Void, Never>] = [:]
+    // Background 45s sync loop + app-activation observer (see startSyncLoop).
+    @ObservationIgnored private var syncLoopTask: Task<Void, Never>?
+    @ObservationIgnored private var didBecomeActiveObserver: (any NSObjectProtocol)?
     var isLoading = false
     var errorMessage: String?
 
@@ -74,6 +95,10 @@ final class AppState {
     var filter: LibraryFilter = .all
     var viewMode: ViewMode = .grid
     var sidebar: Browse = .home
+    // When an episode finishes, start the next unfinished one automatically.
+    var autoPlayNextEpisodes: Bool = UserDefaults.standard.object(forKey: "autoPlayNextEpisodes") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(autoPlayNextEpisodes, forKey: "autoPlayNextEpisodes") }
+    }
     var groupKind: Browse?
     var groupValue: String?
     var stats: LibraryStats?
@@ -81,6 +106,8 @@ final class AppState {
 
     init() {
         loadServers()
+        CoverCache.shared.authToken = token
+        if isLoggedIn { startSyncLoop() }
     }
 
     // MARK: Active server
@@ -118,15 +145,20 @@ final class AppState {
             break
         case .inProgress:
             result = result.filter {
-                let p = progressByItem[$0.id]
+                let p = progress(itemID: $0.id)
                 return (p?.fraction ?? 0) > 0.001 && !(p?.isFinished ?? false)
             }
         case .finished:
-            result = result.filter { progressByItem[$0.id]?.isFinished ?? false }
+            result = result.filter { progress(itemID: $0.id)?.isFinished ?? false }
         case .notStarted:
-            result = result.filter { (progressByItem[$0.id]?.fraction ?? 0) <= 0.001 }
+            result = result.filter { (progress(itemID: $0.id)?.fraction ?? 0) <= 0.001 }
         case .downloaded:
-            result = result.filter { downloads.isDownloaded($0.id) }
+            // A podcast counts as downloaded when any of its episodes is.
+            result = result.filter { item in
+                item.isPodcast
+                    ? downloads.downloadedBooks.contains { $0.itemID == item.id }
+                    : downloads.isDownloaded(item.id)
+            }
         }
 
         let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
@@ -142,7 +174,7 @@ final class AppState {
         case .author:
             result.sort { $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending }
         case .progress:
-            result.sort { (progressByItem[$0.id]?.fraction ?? 0) < (progressByItem[$1.id]?.fraction ?? 0) }
+            result.sort { (progress(itemID: $0.id)?.fraction ?? 0) < (progress(itemID: $1.id)?.fraction ?? 0) }
         }
         if !sortAscending { result.reverse() }
 
@@ -183,7 +215,9 @@ final class AppState {
                 activeServerID = id
             }
             persistServers()
+            CoverCache.shared.authToken = token
             resetLibraryState()
+            startSyncLoop()
             await loadLibraries()
             return true
         } catch {
@@ -196,7 +230,9 @@ final class AppState {
         guard id != activeServerID, servers.contains(where: { $0.id == id }) else { return }
         activeServerID = id
         persistServers()
+        CoverCache.shared.authToken = token
         resetLibraryState()
+        startSyncLoop()
         await loadLibraries()
     }
 
@@ -205,9 +241,12 @@ final class AppState {
         servers.removeAll { $0.id == id }
         if activeServerID == id { activeServerID = servers.first?.id }
         persistServers()
+        CoverCache.shared.authToken = token
         resetLibraryState()
         if activeServerID != nil {
             Task { await loadLibraries() }
+        } else {
+            stopSyncLoop()
         }
     }
 
@@ -220,6 +259,10 @@ final class AppState {
         items = []
         recentItems = []
         progressByItem = [:]
+        episodesByItem = [:]
+        episodesLoadFailed = []
+        fetchedRecentEpisodes = []
+        itemsByID = [:]
         selectedLibraryID = nil
         searchText = ""
         groupKind = nil
@@ -297,6 +340,7 @@ final class AppState {
             libraries = try await api.libraries()
             if selectedLibraryID == nil { selectedLibraryID = libraries.first?.id }
             await loadProgress()
+            await refreshRecentEpisodes()
             if let id = selectedLibraryID { await loadItems(libraryID: id) }
         } catch {
             errorMessage = friendly(error)
@@ -309,6 +353,7 @@ final class AppState {
         isSyncing = true
         await downloads.flushPending(api: api)
         await loadProgress()
+        await refreshRecentEpisodes()
         lastSyncedAt = Date()
         isSyncing = false
     }
@@ -324,16 +369,52 @@ final class AppState {
         return "Synced \(mins / 60)h ago"
     }
 
+    /// Background refresh: pull progress from the server every 45s while the
+    /// app runs, plus once whenever the app becomes active. Owned here rather
+    /// than by a view so window churn can't duplicate or drop it.
+    func startSyncLoop() {
+        guard syncLoopTask == nil else { return }   // already running
+        syncLoopTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(45))
+                guard !Task.isCancelled, let self else { return }
+                if self.isLoggedIn { await self.syncNow() }
+            }
+        }
+        if didBecomeActiveObserver == nil {
+            didBecomeActiveObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.isLoggedIn else { return }
+                    Task { await self.syncNow() }
+                }
+            }
+        }
+    }
+
+    func stopSyncLoop() {
+        syncLoopTask?.cancel()
+        syncLoopTask = nil
+    }
+
     func loadProgress() async {
         guard let list = try? await api.mediaProgress() else { return }
-        var map: [String: ItemProgress] = [:]
+        var map: [ProgressKey: ItemProgress] = [:]
         for entry in list {
             guard let id = entry.libraryItemId else { continue }
-            map[id] = ItemProgress(fraction: entry.progress ?? 0,
-                                   isFinished: entry.isFinished ?? false,
-                                   lastUpdate: entry.lastUpdate ?? 0)
+            map[ProgressKey(itemID: id, episodeID: entry.episodeId)] =
+                ItemProgress(fraction: entry.progress ?? 0,
+                             isFinished: entry.isFinished ?? false,
+                             lastUpdate: entry.lastUpdate ?? 0)
         }
         progressByItem = map
+    }
+
+    /// Progress lookup: nil episodeID reads the item-level (book) entry;
+    /// podcast episode progress lives under (itemID, episodeID).
+    func progress(itemID: String, episodeID: String? = nil) -> ItemProgress? {
+        progressByItem[ProgressKey(itemID: itemID, episodeID: episodeID)]
     }
 
     func selectLibrary(_ id: String) async {
@@ -414,27 +495,48 @@ final class AppState {
         items.filter { $0.author.localizedCaseInsensitiveContains(name) }.count
     }
 
-    func playSession(itemID: String) async -> PlaybackInfo? {
+    func playSession(itemID: String, episodeID: String? = nil) async -> PlaybackInfo? {
         do {
-            return try await api.play(itemID: itemID)
+            return try await api.play(itemID: itemID, episodeID: episodeID)
         } catch {
             errorMessage = friendly(error)
             return nil
         }
     }
 
-    func reportProgress(itemID: String, currentTime: Double, duration: Double) async {
-        let fraction = duration > 0 ? min(1, currentTime / duration) : 0
-        progressByItem[itemID] = ItemProgress(fraction: fraction,
-                                              isFinished: fraction >= 0.99,
-                                              lastUpdate: Date().timeIntervalSince1970 * 1000)
-        downloads.saveProgress(itemID: itemID, currentTime: currentTime, duration: duration)
+    func reportProgress(itemID: String, episodeID: String?, time: Double, duration: Double) {
+        let fraction = duration > 0 ? min(1, time / duration) : 0
+        let key = ProgressKey(itemID: itemID, episodeID: episodeID)
+        progressByItem[key] =
+            ItemProgress(fraction: fraction,
+                         isFinished: fraction >= 0.99,
+                         lastUpdate: Date().timeIntervalSince1970 * 1000)
+        downloads.saveProgress(itemID: itemID, episodeID: episodeID, currentTime: time, duration: duration)
 
-        do {
-            try await api.updateProgress(itemID: itemID, currentTime: currentTime, duration: duration)
-            await downloads.flushPending(api: api)
-        } catch {
-            downloads.queuePending(itemID: itemID, currentTime: currentTime, duration: duration)
+        enqueueProgressPatch(for: key) { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.api.patchProgress(itemID: itemID, episodeID: episodeID,
+                                                 currentTime: time, duration: duration,
+                                                 progress: fraction, isFinished: fraction >= 0.99)
+                await self.downloads.flushPending(api: self.api)
+            } catch {
+                guard !Task.isCancelled else { return }   // superseded by a newer write
+                self.downloads.queuePending(itemID: itemID, episodeID: episodeID, currentTime: time, duration: duration)
+            }
+        }
+    }
+
+    /// Serialize server progress writes per (item, episode): the newest write
+    /// cancels the previous one and waits for it to wind down before sending,
+    /// so PATCHes for the same key can't land out of order (latest wins).
+    private func enqueueProgressPatch(for key: ProgressKey, _ patch: @escaping @MainActor () async -> Void) {
+        let previous = progressPatchTasks[key]
+        previous?.cancel()
+        progressPatchTasks[key] = Task {
+            _ = await previous?.value
+            guard !Task.isCancelled else { return }
+            await patch()
         }
     }
 
@@ -442,13 +544,161 @@ final class AppState {
         await downloads.flushPending(api: api)
     }
 
+    // MARK: Podcasts
+
+    /// Cached episode list for a podcast item; nil until loadEpisodes has run.
+    func episodes(for itemID: String) -> [PodcastEpisode]? {
+        episodesByItem[itemID]
+    }
+
+    /// Fetch the expanded item and cache its episode list, merging the
+    /// response's progress rows (include=progress) into `progressByItem` so
+    /// episode state is current even before the next /api/me sync. Failures
+    /// are recorded in `episodesLoadFailed` so the episode UI can offer retry.
+    func loadEpisodes(itemID: String) async {
+        do {
+            let expanded = try await api.fetchItemExpanded(itemID: itemID)
+            episodesByItem[itemID] = expanded.episodes
+            episodesLoadFailed.remove(itemID)
+            for entry in expanded.userMediaProgress ?? [] {
+                let key = ProgressKey(itemID: itemID, episodeID: entry.episodeId)
+                let incoming = ItemProgress(fraction: entry.progress ?? 0,
+                                            isFinished: entry.isFinished ?? false,
+                                            lastUpdate: entry.lastUpdate ?? 0)
+                // Don't clobber a newer local (optimistic) update with a stale row.
+                if let existing = progressByItem[key], existing.lastUpdate > incoming.lastUpdate { continue }
+                progressByItem[key] = incoming
+            }
+        } catch {
+            episodesLoadFailed.insert(itemID)
+            errorMessage = friendly(error)
+        }
+    }
+
+    /// Latest episodes across every podcast library, as fetched. HomeData's
+    /// `recentEpisodes` filters + re-orders these for the Home shelf. On a
+    /// flaky refresh the previous list is kept — only successful fetches
+    /// overwrite it, and if every library fails the shelf keeps its content.
+    func refreshRecentEpisodes() async {
+        let podcastLibraries = libraries.filter { $0.mediaType == "podcast" }
+        guard !podcastLibraries.isEmpty else {
+            fetchedRecentEpisodes = []
+            return
+        }
+        var merged: [PodcastEpisode] = []
+        var anySucceeded = false
+        for library in podcastLibraries {
+            do {
+                let response = try await api.fetchRecentEpisodes(libraryID: library.id, limit: 15)
+                merged.append(contentsOf: response.episodes)
+                anySucceeded = true
+            } catch {
+                print("[Alexandria] recent episodes fetch failed for library \(library.id): \(error)")
+            }
+        }
+        if anySucceeded { fetchedRecentEpisodes = merged }
+    }
+
+    /// Mark an episode (un)finished: optimistic local update, then the server
+    /// PATCH. Offline, the mark is queued as pending progress carrying the
+    /// isFinished flag, so it flushes even when the duration is unknown.
+    func markEpisode(itemID: String, episodeID: String, finished: Bool) {
+        progressByItem[ProgressKey(itemID: itemID, episodeID: episodeID)] =
+            ItemProgress(fraction: finished ? 1 : 0,
+                         isFinished: finished,
+                         lastUpdate: Date().timeIntervalSince1970 * 1000)
+        Task {
+            do {
+                if finished {
+                    try await api.markFinished(itemID: itemID, episodeID: episodeID)
+                } else {
+                    try await api.patchProgress(itemID: itemID, episodeID: episodeID,
+                                                progress: 0, isFinished: false)
+                }
+                await downloads.flushPending(api: api)
+            } catch {
+                let duration = episodes(for: itemID)?.first(where: { $0.id == episodeID })?.bestDuration ?? 0
+                downloads.queuePending(itemID: itemID, episodeID: episodeID,
+                                       currentTime: finished ? duration : 0, duration: duration,
+                                       isFinished: finished)
+            }
+        }
+    }
+
+    /// Next unfinished episode after the given one, in feed order (oldest →
+    /// newest, same `sortDate` key as EpisodeListView), so episodic shows
+    /// advance chronologically. Finished episodes are skipped.
+    func nextEpisode(after episodeID: String, in itemID: String) -> PodcastEpisode? {
+        guard let list = episodesByItem[itemID] else { return nil }
+        let ordered = list.sorted { $0.sortDate < $1.sortDate }
+        guard let index = ordered.firstIndex(where: { $0.id == episodeID }) else { return nil }
+        return ordered.dropFirst(index + 1).first {
+            !(progress(itemID: itemID, episodeID: $0.id)?.isFinished ?? false)
+        }
+    }
+
+    /// The episode an item-level "play" targets for a podcast: the in-progress
+    /// episode played most recently, else the next unfinished episode (feed
+    /// order) after the last finished one, else the newest. Loads the episode
+    /// list on a cache miss; nil when no episodes are available.
+    func resumeEpisode(for item: LibraryItem) async -> PodcastEpisode? {
+        if episodesByItem[item.id] == nil { await loadEpisodes(itemID: item.id) }
+        guard let list = episodesByItem[item.id], !list.isEmpty else { return nil }
+        func progressFor(_ episode: PodcastEpisode) -> ItemProgress? {
+            progress(itemID: item.id, episodeID: episode.id)
+        }
+        let inProgress = list.filter {
+            guard let p = progressFor($0) else { return false }
+            return p.fraction > 0 && p.fraction < 1 && !p.isFinished
+        }
+        if let resume = inProgress.max(by: {
+            (progressFor($0)?.lastUpdate ?? 0) < (progressFor($1)?.lastUpdate ?? 0)
+        }) {
+            return resume
+        }
+        let ordered = list.sorted { $0.sortDate < $1.sortDate }
+        if let lastFinished = ordered.lastIndex(where: { progressFor($0)?.isFinished ?? false }),
+           let next = ordered.dropFirst(lastFinished + 1).first(where: {
+               !(progressFor($0)?.isFinished ?? false)
+           }) {
+            return next
+        }
+        return ordered.last
+    }
+
+    func item(byID id: String) -> LibraryItem? {
+        items.first { $0.id == id } ?? recentItems.first { $0.id == id }
+    }
+
+    /// Item lookup that can reach the server: loaded lists first, then the
+    /// side cache, then GET api/items/{id} (cached for later calls). Used by
+    /// surfaces that only know an id (Home episode cards, auto-play-next).
+    func resolveItem(id: String) async -> LibraryItem? {
+        if let loaded = item(byID: id) { return loaded }
+        if let cached = itemsByID[id] { return cached }
+        guard let fetched = try? await api.item(itemID: id) else { return nil }
+        itemsByID[id] = fetched
+        return fetched
+    }
+
     // MARK: Downloads
 
-    func startDownload(item: LibraryItem) async {
-        guard !downloads.isDownloaded(item.id), !downloads.isDownloading(item.id) else { return }
-        guard let session = await playSession(itemID: item.id) else { return }
+    /// Pass an episode to download just that episode; nil downloads the book —
+    /// or, for podcasts, the resume-target episode (an item-level play session
+    /// isn't valid for podcasts).
+    func startDownload(item: LibraryItem, episode: PodcastEpisode? = nil) async {
+        var episode = episode
+        if item.isPodcast, episode == nil {
+            guard let target = await resumeEpisode(for: item) else { return }
+            episode = target
+        }
+        let episodeID = episode?.id
+        guard !downloads.isDownloaded(item.id, episodeID: episodeID),
+              !downloads.isDownloading(item.id, episodeID: episodeID) else { return }
+        guard let session = await playSession(itemID: item.id, episodeID: episodeID) else { return }
         await downloads.download(
             item: item,
+            episode: episode,
             session: session,
             serverURL: serverURL,
             token: token,
@@ -456,8 +706,8 @@ final class AppState {
         )
     }
 
-    func removeDownload(itemID: String) {
-        downloads.remove(itemID)
+    func removeDownload(itemID: String, episodeID: String? = nil) {
+        downloads.remove(itemID, episodeID: episodeID)
     }
 
     private func friendly(_ error: Error) -> String {

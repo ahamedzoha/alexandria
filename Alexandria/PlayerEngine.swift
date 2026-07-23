@@ -26,9 +26,14 @@ final class PlayerEngine {
 
     // Progress reporting
     private var itemID = ""
+    private var currentEpisodeID: String?   // set when a podcast episode is playing
+    private var authToken: String?          // sent as a Bearer header on track requests
     private var tickCount = 0
-    /// Set by the app to persist position to the server. (itemID, currentTime, duration)
-    var onProgress: ((String, Double, Double) -> Void)?
+    private var didFireFinished = false
+    /// Set by the app to persist position to the server. (itemID, episodeID, currentTime, duration)
+    var onProgress: ((String, String?, Double, Double) -> Void)?
+    /// Fired exactly once when playback reaches its natural end. (itemID, episodeID)
+    var onFinished: ((String, String?) -> Void)?
 
     // Published state
     var chapters: [Chapter] = []
@@ -71,18 +76,17 @@ final class PlayerEngine {
 
     // MARK: Loading
 
+    @discardableResult
     func load(session: PlaybackInfo,
               itemID: String,
+              episodeID: String? = nil,
               serverURL: String,
               token: String?,
               title: String,
               author: String,
-              cover: URL?) {
-        reportNow()   // flush progress for whatever was playing before
-        teardown()
-        self.itemID = itemID
-        tickCount = 0
-
+              cover: URL?) -> Bool {
+        // Resolve the new track list first — if nothing is playable, bail out
+        // without tearing down whatever is currently playing.
         let sorted = session.audioTracks.sorted { ($0.index ?? 0) < ($1.index ?? 0) }
         var offsets: [Double] = []
         var urls: [URL] = []
@@ -92,7 +96,15 @@ final class PlayerEngine {
             offsets.append(track.startOffset ?? (offsets.last ?? 0))
             urls.append(url)
         }
-        guard !urls.isEmpty else { return }
+        guard !urls.isEmpty else { return false }
+
+        reportNow()   // flush progress for whatever was playing before
+        teardown()
+        self.itemID = itemID
+        self.currentEpisodeID = episodeID ?? session.episodeId
+        self.authToken = token
+        tickCount = 0
+        didFireFinished = false
 
         trackOffsets = offsets
         trackURLs = urls
@@ -115,6 +127,7 @@ final class PlayerEngine {
         if within > 0.5 { player?.seek(to: cmTime(within)) }
         loadArtwork(cover)
         play()
+        return true
     }
 
     private func buildQueue(fromIndex idx: Int) {
@@ -124,7 +137,7 @@ final class PlayerEngine {
         var items: [AVPlayerItem] = []
         itemIndexMap.removeAll()
         for i in start..<trackURLs.count {
-            let item = AVPlayerItem(url: trackURLs[i])
+            let item = playerItem(for: trackURLs[i])
             itemIndexMap[ObjectIdentifier(item)] = i
             items.append(item)
         }
@@ -138,6 +151,18 @@ final class PlayerEngine {
 
     // MARK: URL building
 
+    /// Remote tracks authenticate with a Bearer header on the asset so the token
+    /// stays out of URLs and logs. HLS segment requests inherit these options.
+    private func playerItem(for url: URL) -> AVPlayerItem {
+        guard !url.isFileURL, let authToken, !authToken.isEmpty else {
+            return AVPlayerItem(url: url)
+        }
+        let asset = AVURLAsset(url: url, options: [
+            "AVURLAssetHTTPHeaderFieldsKey": ["Authorization": "Bearer \(authToken)"]
+        ])
+        return AVPlayerItem(asset: asset)
+    }
+
     private func trackURL(_ content: String, serverURL: String, token: String?) -> URL? {
         var absolute = content
         if content.hasPrefix("/") {
@@ -145,7 +170,18 @@ final class PlayerEngine {
             absolute = base + content
         }
         guard var comps = URLComponents(string: absolute) else { return nil }
-        if let token, !token.isEmpty {
+        // Classify the path relative to the server base so a subpath reverse
+        // proxy (https://host/abs -> /abs/hls/...) is detected correctly.
+        var relativePath = comps.path
+        if let basePath = URLComponents(string: serverURL.trimmingCharacters(in: .whitespaces))?.path {
+            let trimmedBase = basePath.hasSuffix("/") ? String(basePath.dropLast()) : basePath
+            if !trimmedBase.isEmpty, relativePath.hasPrefix(trimmedBase) {
+                relativePath = String(relativePath.dropFirst(trimmedBase.count))
+            }
+        }
+        // HLS only: AVPlayer's segment requests don't reliably carry custom headers,
+        // so transcode paths keep ?token=; everything else uses the Bearer header.
+        if let token, !token.isEmpty, relativePath.hasPrefix("/hls/") {
             let hasToken = comps.queryItems?.contains { $0.name == "token" } ?? false
             if !hasToken {
                 var q = comps.queryItems ?? []
@@ -193,7 +229,13 @@ final class PlayerEngine {
                 if let item = note.object as? AVPlayerItem,
                    let idx = self.itemIndexMap[ObjectIdentifier(item)],
                    idx == self.trackURLs.count - 1 {
-                    self.isPlaying = false   // reached the end of the book
+                    self.isPlaying = false   // reached the natural end
+                    if !self.didFireFinished, !self.itemID.isEmpty, self.duration > 0 {
+                        self.didFireFinished = true
+                        self.currentTime = self.duration
+                        self.reportNow()   // final position == duration so the server sees 100%
+                        self.onFinished?(self.itemID, self.currentEpisodeID)
+                    }
                 }
             }
         }
@@ -242,7 +284,7 @@ final class PlayerEngine {
 
     private func reportNow() {
         guard !itemID.isEmpty, duration > 0 else { return }
-        onProgress?(itemID, currentTime, duration)
+        onProgress?(itemID, currentEpisodeID, currentTime, duration)
     }
 
     func toggle() { isPlaying ? pause() : play() }
@@ -397,24 +439,12 @@ final class PlayerEngine {
         artwork = nil
         guard let url else { return }
         Task { [weak self] in
-            guard let image = await Self.fetchImage(url) else { return }
+            guard let image = await CoverCache.shared.image(for: url) else { return }
+            // A newer load may have swapped the cover while we were fetching.
+            guard let self, self.coverURL == url else { return }
             let art = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-            self?.artwork = art
-            self?.updateNowPlayingInfo()
+            self.artwork = art
+            self.updateNowPlayingInfo()
         }
-    }
-
-    private static func fetchImage(_ url: URL) async -> NSImage? {
-        let key = url.absoluteString as NSString
-        if let cached = CoverCache.shared.object(forKey: key) { return cached }
-        if url.isFileURL {
-            guard let image = NSImage(contentsOf: url) else { return nil }
-            CoverCache.shared.setObject(image, forKey: key)
-            return image
-        }
-        guard let (data, _) = try? await URLSession.shared.data(from: url),
-              let image = NSImage(data: data) else { return nil }
-        CoverCache.shared.setObject(image, forKey: key)
-        return image
     }
 }

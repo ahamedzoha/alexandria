@@ -41,6 +41,17 @@ struct APIClient: Sendable {
     }
 
     private func send<T: Decodable>(_ req: URLRequest, as type: T.Type) async throws -> T {
+        let data = try await validatedData(for: req)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw APIError(message: "Unexpected response from server.")
+        }
+    }
+
+    /// Transport + HTTP status validation shared by every request — callers
+    /// that don't decode a body still surface non-2xx responses as errors.
+    private func validatedData(for req: URLRequest) async throws -> Data {
         let (data, resp): (Data, URLResponse)
         do {
             (data, resp) = try await URLSession.shared.data(for: req)
@@ -59,11 +70,7 @@ struct APIClient: Sendable {
             if http.statusCode == 401 { throw APIError(message: "Wrong username or password.") }
             throw APIError(message: "Server returned error \(http.statusCode).")
         }
-        do {
-            return try JSONDecoder().decode(T.self, from: data)
-        } catch {
-            throw APIError(message: "Unexpected response from server.")
-        }
+        return data
     }
 
     // MARK: Endpoints
@@ -121,15 +128,21 @@ struct APIClient: Sendable {
         return try await send(req, as: AuthorsResponse.self).authors
     }
 
+    /// Token-free — consumers (CoverCache) authenticate with a Bearer header.
     func authorImageURL(authorID: String) -> URL? {
-        var query: [URLQueryItem] = []
-        if let token, !token.isEmpty { query.append(URLQueryItem(name: "token", value: token)) }
-        return try? makeURL("api/authors/\(authorID)/image", query: query)
+        try? makeURL("api/authors/\(authorID)/image")
     }
 
     func libraryStats(libraryID: String) async throws -> LibraryStats {
         let req = try request("api/libraries/\(libraryID)/stats")
         return try await send(req, as: LibraryStats.self)
+    }
+
+    /// Single library item by id (the minified shape decodes into LibraryItem).
+    /// Used by AppState.resolveItem for items outside the loaded lists.
+    func item(itemID: String) async throws -> LibraryItem {
+        let req = try request("api/items/\(itemID)")
+        return try await send(req, as: LibraryItem.self)
     }
 
     func itemDetail(itemID: String) async throws -> ItemDetail {
@@ -141,29 +154,61 @@ struct APIClient: Sendable {
         return try await send(req, as: ItemDetail.self)
     }
 
+    /// Token-free — consumers (CoverCache) authenticate with a Bearer header.
     func coverURL(itemID: String) -> URL? {
-        var query: [URLQueryItem] = []
-        if let token, !token.isEmpty { query.append(URLQueryItem(name: "token", value: token)) }
-        return try? makeURL("api/items/\(itemID)/cover", query: query)
+        try? makeURL("api/items/\(itemID)/cover")
     }
 
-    func play(itemID: String) async throws -> PlaybackInfo {
+    func play(itemID: String, episodeID: String? = nil) async throws -> PlaybackInfo {
         let body = try JSONEncoder().encode(PlayRequest())
-        let req = try request("api/items/\(itemID)/play", method: "POST", body: body)
+        var path = "api/items/\(itemID)/play"
+        if let episodeID { path += "/\(episodeID)" }
+        let req = try request(path, method: "POST", body: body)
         return try await send(req, as: PlaybackInfo.self)
     }
 
-    /// Save listening position back to the server (resumes here + on other devices).
-    func updateProgress(itemID: String, currentTime: Double, duration: Double) async throws {
-        let progress = duration > 0 ? min(1, currentTime / duration) : 0
-        let payload = ProgressUpdate(
-            currentTime: currentTime,
-            duration: duration,
-            progress: progress,
-            isFinished: progress >= 0.99
-        )
+    // MARK: Podcasts
+
+    /// Full item (podcast items carry their episode list in media.episodes).
+    func fetchItemExpanded(itemID: String) async throws -> ItemExpandedResponse {
+        var req = try request("api/items/\(itemID)")
+        if let url = req.url, var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            comps.queryItems = [
+                URLQueryItem(name: "expanded", value: "1"),
+                URLQueryItem(name: "include", value: "progress"),
+            ]
+            if let u = comps.url { req.url = u }
+        }
+        return try await send(req, as: ItemExpandedResponse.self)
+    }
+
+    /// Newest podcast episodes across the library (for the Home shelf).
+    func fetchRecentEpisodes(libraryID: String, limit: Int = 25) async throws -> RecentEpisodesResponse {
+        var req = try request("api/libraries/\(libraryID)/recent-episodes")
+        if let url = req.url, var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            comps.queryItems = [
+                URLQueryItem(name: "limit", value: String(limit)),
+                URLQueryItem(name: "page", value: "0"),
+            ]
+            if let u = comps.url { req.url = u }
+        }
+        return try await send(req, as: RecentEpisodesResponse.self)
+    }
+
+    /// Sparse progress update; only non-nil fields are sent. Pass episodeID for
+    /// podcast episodes (progress is keyed per item + episode on the server).
+    func patchProgress(itemID: String, episodeID: String? = nil, currentTime: Double? = nil,
+                       duration: Double? = nil, progress: Double? = nil, isFinished: Bool? = nil) async throws {
+        let payload = ProgressPatch(currentTime: currentTime, duration: duration,
+                                    progress: progress, isFinished: isFinished)
         let body = try JSONEncoder().encode(payload)
-        let req = try request("api/me/progress/\(itemID)", method: "PATCH", body: body)
-        _ = try await URLSession.shared.data(for: req)
+        var path = "api/me/progress/\(itemID)"
+        if let episodeID { path += "/\(episodeID)" }
+        let req = try request(path, method: "PATCH", body: body)
+        _ = try await validatedData(for: req)
+    }
+
+    func markFinished(itemID: String, episodeID: String? = nil) async throws {
+        try await patchProgress(itemID: itemID, episodeID: episodeID, isFinished: true)
     }
 }
