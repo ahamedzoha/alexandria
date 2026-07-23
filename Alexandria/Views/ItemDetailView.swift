@@ -67,7 +67,10 @@ struct ItemDetailView: View {
             coverArt
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.title).font(.title.bold())
-                Text(item.author).font(.title3).foregroundStyle(.secondary)
+                // Many feeds set author == show title; repeating it is noise.
+                if !item.author.isEmpty, item.author != item.title {
+                    Text(item.author).font(.title3).foregroundStyle(.secondary)
+                }
                 if let count = app.episodes(for: item.id)?.count ?? item.numEpisodes {
                     Label("\(count) episode\(count == 1 ? "" : "s")",
                           systemImage: "antenna.radiowaves.left.and.right")

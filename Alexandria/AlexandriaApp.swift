@@ -6,6 +6,15 @@ struct AlexandriaApp: App {
     @State private var player = PlayerEngine()
     @StateObject private var updater = UpdaterModel()
 
+    init() {
+        // Use slim overlay scrollers (appear while scrolling, then fade) even
+        // when a mouse is attached — otherwise macOS renders wide legacy
+        // scroller bars that fight the sheet/card design. Per-app override of
+        // the system "Show scroll bars" preference; SwiftUI's
+        // .scrollIndicators(.hidden) is ignored in legacy-scroller mode.
+        UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
+    }
+
     var body: some Scene {
         // Identified so the menu-bar mini player can reopen it via
         // openWindow(id: "main") after the last window closes.

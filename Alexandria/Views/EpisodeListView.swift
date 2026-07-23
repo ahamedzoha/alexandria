@@ -24,6 +24,7 @@ struct EpisodeListView: View {
                     systemImage: "antenna.radiowaves.left.and.right",
                     description: Text("Episodes will appear here once the server has them.")
                 )
+                .frame(maxWidth: .infinity)
             } else {
                 list(episodes)
             }
@@ -36,6 +37,7 @@ struct EpisodeListView: View {
                 Button("Retry") { Task { await app.loadEpisodes(itemID: item.id) } }
                     .buttonStyle(.borderedProminent)
             }
+            .frame(maxWidth: .infinity)
         } else {
             ProgressView()
                 .frame(maxWidth: .infinity)
