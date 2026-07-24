@@ -35,6 +35,15 @@ fi
 VERSION="${VERSION#v}"
 : "${VERSION:=0.0.0}"
 
+# Build number (CFBundleVersion). Sparkle compares the appcast's
+# sparkle:version against the INSTALLED app's CFBundleVersion, so the appcast
+# must carry this value — publishing the marketing string there (e.g. "0.4.0"
+# vs an installed CFBundleVersion of "3") makes every update look OLDER than
+# what's installed and Sparkle silently never offers it.
+BUILD_NUMBER="$(xcodebuild -scheme "$SCHEME" -showBuildSettings 2>/dev/null \
+  | awk -F' = ' '/ CURRENT_PROJECT_VERSION /{print $2; exit}')"
+: "${BUILD_NUMBER:=1}"
+
 echo "▸ Packaging $APP $VERSION"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
@@ -107,7 +116,7 @@ else
     <item>
       <title>$VERSION</title>
       <pubDate>$PUB_DATE</pubDate>
-      <sparkle:version>$VERSION</sparkle:version>
+      <sparkle:version>$BUILD_NUMBER</sparkle:version>
       <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
       <link>https://github.com/ahamedzoha/alexandria/releases</link>
