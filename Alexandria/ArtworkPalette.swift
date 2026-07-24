@@ -9,11 +9,20 @@ import SwiftUI
 /// All colors are fixed sRGB values (they do not adapt to light/dark mode);
 /// consumers should branch on `isDark` when they need to pair the palette
 /// with system materials.
+///
+/// The text colors are guaranteed against `background` **as an opaque fill**
+/// only. Draw them over a translucent version of it — a soft wash, a material,
+/// a gradient that fades out — and the guarantee is void, because most of what
+/// the glyphs sit on is then whatever is underneath. Use semantic colors there.
 struct ArtworkPalette: Equatable, Sendable {
     let background: Color
     let primaryText: Color
     let secondaryText: Color
     let accent: Color
+    /// Whether `background` reads as a dark fill — for pairing chrome and
+    /// materials with it. Not a text-tone signal: the threshold sits well above
+    /// the luminance where dark text starts to beat light text, so a bright,
+    /// saturated cover can be `isDark` and still want dark ink on it.
     let isDark: Bool
 }
 
@@ -119,16 +128,30 @@ final class PaletteStore {
     ///    solid border, preferring a colored candidate over near-black/white.
     /// 3. Text/accent = frequent, saturated, mutually distinct colors that
     ///    clear a 3.0:1 WCAG contrast ratio against that background; accent is
-    ///    the most saturated survivor, primary text the highest-contrast one.
+    ///    the most saturated survivor, primary text the highest-contrast one
+    ///    *among those on the legible side of the background*.
     private nonisolated static func extract(from cgImage: CGImage) -> ArtworkPalette? {
         guard let bitmap = Bitmap(downsampling: cgImage) else { return nil }
 
         let background = backgroundColor(of: bitmap)
         let candidates = textCandidates(in: bitmap, against: background)
 
-        // Fall back to plain black/white text when nothing clears the bar.
-        let fallback: RGB = background.relativeLuminance < 0.5 ? .white : .black
-        let primary = candidates.max { $0.contrastRatio(against: background) < $1.contrastRatio(against: background) } ?? fallback
+        // Plain black/white is the floor for text — whichever contrasts more.
+        // (The crossover is background luminance ~0.18, far below the 0.5 that
+        // decides `isDark`, so saturated covers routinely want dark ink.)
+        let fallback: RGB = RGB.white.contrastRatio(against: background)
+            >= RGB.black.contrastRatio(against: background) ? .white : .black
+        // Text must also sit on the same side of the background as that floor.
+        // Raw contrast alone picks the wrong ink at mid luminance: against a
+        // brick red (~0.17) a near-black cover color out-contrasts every light
+        // one, giving dark-on-dark the moment that red is dimmed or overlaid.
+        let wantsLighterText = fallback.relativeLuminance > background.relativeLuminance
+        let legible = candidates.filter {
+            ($0.relativeLuminance > background.relativeLuminance) == wantsLighterText
+        }
+        let primary = legible.max { $0.contrastRatio(against: background) < $1.contrastRatio(against: background) } ?? fallback
+        // Accent draws from the unfiltered pool — it tints controls and meters,
+        // not text, and is contrast-checked by its consumers.
         let accent = candidates.max { $0.saturation < $1.saturation } ?? fallback
         // Secondary text: primary at 70% opacity, pre-blended over the background.
         let secondary = primary.blended(toward: background, amount: 0.3)

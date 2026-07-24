@@ -48,6 +48,14 @@ final class PaletteTests: XCTestCase {
         return (rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
     }
 
+    /// WCAG relative luminance, mirroring the extraction's own math.
+    private func relativeLuminance(_ c: (r: Double, g: Double, b: Double)) -> Double {
+        func linear(_ v: Double) -> Double {
+            v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(c.r) + 0.7152 * linear(c.g) + 0.0722 * linear(c.b)
+    }
+
     // MARK: Extraction
 
     func testSolidCoverBackgroundMatchesFillColor() async throws {
@@ -85,6 +93,38 @@ final class PaletteTests: XCTestCase {
         XCTAssertEqual(bg.g, 0.2, accuracy: 0.05)
         XCTAssertEqual(bg.b, 0.85, accuracy: 0.05)
         XCTAssertTrue(palette.isDark)
+    }
+
+    /// Regression: a mid-luminance background (bright brick red, ~0.17) sits
+    /// just above the point where dark ink out-contrasts light ink, so a
+    /// near-black cover color used to win `primaryText` on raw contrast alone
+    /// — dark-on-dark the moment that red was dimmed or washed. Text must land
+    /// on the same side of the background as the black/white floor.
+    func testTextIsLighterThanAMidLuminanceBackground() async throws {
+        let background = (r: 0.78, g: 0.27, b: 0.20)
+        let url = try writePNG("mid-luminance-bg") { context, rect in
+            context.setFillColor(srgb(background.r, background.g, background.b))
+            context.fill(rect)
+            // Right half: a near-black block that beats every light color on
+            // raw contrast, and a light one that should win anyway.
+            context.setFillColor(srgb(0.13, 0.10, 0.09))
+            context.fill(CGRect(x: 110, y: 20, width: 80, height: 70))
+            context.setFillColor(srgb(0.95, 0.85, 0.35))
+            context.fill(CGRect(x: 110, y: 110, width: 80, height: 70))
+        }
+        let extracted = await PaletteStore.shared.palette(for: url)
+        let palette = try XCTUnwrap(extracted)
+        let bg = try components(palette.background)
+        XCTAssertEqual(bg.r, background.r, accuracy: 0.06)
+
+        let text = try components(palette.primaryText)
+        XCTAssertGreaterThan(
+            relativeLuminance(text), relativeLuminance(bg),
+            "primaryText must be lighter than a background that wants light ink"
+        )
+        XCTAssertGreaterThanOrEqual(
+            ArtworkPalette.contrastRatio(palette.primaryText, palette.background), 3.0
+        )
     }
 
     func testIsDarkForBlackVersusWhiteCovers() async throws {
