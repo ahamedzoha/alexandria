@@ -4,6 +4,63 @@ import Foundation
 /// Observation-tracked computed properties (same pattern as `visibleItems`
 /// and `searchMatches`). Keeps the feature isolated from AppState's core.
 extension AppState {
+    /// One resumable thing — a book or a podcast episode — with its progress
+    /// snapshot. The Home hero and Continue Listening shelf render these
+    /// uniformly, so both media share a single "pick up where you left off"
+    /// surface instead of podcasts living in a separate mechanism.
+    enum ContinueEntry: Identifiable {
+        case book(LibraryItem, ItemProgress)
+        case episode(PodcastEpisode, show: LibraryItem, ItemProgress)
+
+        var id: String {
+            switch self {
+            case .book(let item, _): return item.id
+            case .episode(let episode, let show, _): return "\(show.id)|\(episode.id)"
+            }
+        }
+        /// The library item playback and detail sheets target: the book
+        /// itself, or the episode's owning show.
+        var item: LibraryItem {
+            switch self {
+            case .book(let item, _): return item
+            case .episode(_, let show, _): return show
+            }
+        }
+        /// Set only for podcast entries — passing it to startPlayback resumes
+        /// this exact episode instead of the show's resume heuristic.
+        var episode: PodcastEpisode? {
+            switch self {
+            case .book: return nil
+            case .episode(let episode, _, _): return episode
+            }
+        }
+        var title: String {
+            switch self {
+            case .book(let item, _): return item.title
+            case .episode(let episode, _, _): return episode.displayTitle
+            }
+        }
+        /// The supporting line under the title: author for books, show name
+        /// for episodes.
+        var subtitle: String {
+            switch self {
+            case .book(let item, _): return item.author
+            case .episode(_, let show, _): return show.title
+            }
+        }
+        var progress: ItemProgress {
+            switch self {
+            case .book(_, let p), .episode(_, _, let p): return p
+            }
+        }
+        var duration: Double? {
+            switch self {
+            case .book(let item, _): return item.duration
+            case .episode(let episode, _, _): return episode.bestDuration
+            }
+        }
+    }
+
     /// In-progress books, most-recently-played first.
     var continueListening: [LibraryItem] {
         items
@@ -14,8 +71,34 @@ extension AppState {
             .sorted { (progress(itemID: $0.id)?.lastUpdate ?? 0) > (progress(itemID: $1.id)?.lastUpdate ?? 0) }
     }
 
-    /// The single most-recently-played in-progress book (drives the hero card).
-    var heroContinueItem: LibraryItem? { continueListening.first }
+    /// Books and podcast episodes in progress, merged most-recently-played
+    /// first — the single continue queue behind the hero + shelf. Episode
+    /// entries re-check progress live so a finished/reset episode drops out
+    /// immediately, without waiting for the next episodeResumes refresh.
+    var continueQueue: [ContinueEntry] {
+        let books = continueListening.compactMap { item in
+            progress(itemID: item.id).map { ContinueEntry.book(item, $0) }
+        }
+        let episodes = episodeResumes.compactMap { resume -> ContinueEntry? in
+            guard let p = progress(itemID: resume.item.id, episodeID: resume.episode.id),
+                  p.fraction > 0.001, !p.isFinished else { return nil }
+            return .episode(resume.episode, show: resume.item, p)
+        }
+        return Self.mergedContinue(books + episodes)
+    }
+
+    /// The single most-recently-played entry across both media (drives the
+    /// hero card).
+    var heroContinue: ContinueEntry? { continueQueue.first }
+
+    /// Everything after the hero, for the Continue Listening shelf.
+    var continueShelfEntries: [ContinueEntry] { Array(continueQueue.dropFirst()) }
+
+    /// Pure merge: most recent `lastUpdate` first. Static so cross-media
+    /// ordering is unit-testable without an AppState.
+    static func mergedContinue(_ entries: [ContinueEntry]) -> [ContinueEntry] {
+        entries.sorted { $0.progress.lastUpdate > $1.progress.lastUpdate }
+    }
 
     /// Finished books, most-recently-finished first.
     var recentlyFinished: [LibraryItem] {
@@ -65,30 +148,38 @@ extension AppState {
         items.reduce(0.0) { $0 + (progress(itemID: $1.id)?.fraction ?? 0) * ($1.duration ?? 0) } / 3600
     }
 
-    /// Podcast episodes for the Home "Latest Episodes" shelf, derived from the
-    /// raw server fetch (`fetchedRecentEpisodes`). In-progress episodes
-    /// (0 < fraction < 1 in `progressByItem`) sort FIRST, most recently played
-    /// first, so Home always offers a resume surface; the rest follow newest-
-    /// published first (`sortDate`). Finished episodes drop out.
+    /// Podcast episodes for the Home "Latest Episodes" shelf: newest-published
+    /// first, finished episodes dropped. Started episodes are excluded only
+    /// when they actually made it onto the continue surfaces (hero / shelf) —
+    /// excluding on raw progress instead would make an episode past the
+    /// continue queue's resolution cap vanish from Home entirely.
     var recentEpisodes: [PodcastEpisode] {
-        // lastUpdate when the episode is in progress, nil otherwise.
-        func resumeStamp(_ episode: PodcastEpisode) -> Double? {
-            guard let itemID = episode.libraryItemId,
-                  let p = progress(itemID: itemID, episodeID: episode.id),
-                  p.fraction > 0, p.fraction < 1, !p.isFinished else { return nil }
-            return p.lastUpdate
+        let onContinue = Set(episodeResumes.map { "\($0.item.id)|\($0.episode.id)" })
+        return Self.freshEpisodes(from: fetchedRecentEpisodes, onContinueSurfaces: onContinue) { itemID, episodeID in
+            progress(itemID: itemID, episodeID: episodeID)
         }
-        let unfinished = fetchedRecentEpisodes.filter { episode in
-            guard let itemID = episode.libraryItemId else { return true }
-            return !(progress(itemID: itemID, episodeID: episode.id)?.isFinished ?? false)
-        }
-        let inProgress = unfinished
-            .filter { resumeStamp($0) != nil }
-            .sorted { (resumeStamp($0) ?? 0) > (resumeStamp($1) ?? 0) }
-        let fresh = unfinished
-            .filter { resumeStamp($0) == nil }
-            .sorted { $0.sortDate > $1.sortDate }
-        return Array((inProgress + fresh).prefix(20))
+    }
+
+    /// Pure filter/sort behind `recentEpisodes` (unit-testable without an
+    /// AppState): drops finished episodes and ones already shown on the
+    /// continue surfaces (keyed "itemID|episodeID"), newest first.
+    static func freshEpisodes(
+        from fetched: [PodcastEpisode],
+        onContinueSurfaces: Set<String>,
+        progress: (String, String) -> ItemProgress?
+    ) -> [PodcastEpisode] {
+        Array(
+            fetched
+                .filter { episode in
+                    guard let itemID = episode.libraryItemId,
+                          let p = progress(itemID, episode.id) else { return true }
+                    if p.isFinished { return false }
+                    if p.fraction <= 0.001 { return true }
+                    return !onContinueSurfaces.contains("\(itemID)|\(episode.id)")
+                }
+                .sorted { $0.sortDate > $1.sortDate }
+                .prefix(20)
+        )
     }
 }
 

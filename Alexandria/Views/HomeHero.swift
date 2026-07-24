@@ -15,7 +15,7 @@ struct GreetingHeader: View {
                     .foregroundStyle(.secondary)
                 Text(greeting)
                     .font(Theme.Typography.heroTitle)
-                Text(app.heroContinueItem != nil ? "Pick up where you left off." : "Find your next listen.")
+                Text(app.heroContinue != nil ? "Pick up where you left off." : "Find your next listen.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
             }
@@ -90,33 +90,34 @@ struct CompletionRing: View {
 /// The continue-listening hero — the Home showcase moment. Large artwork on the
 /// left; behind the whole section, a soft artwork-derived wash that bleeds
 /// edge-to-edge and slides under the sidebar/toolbar via
-/// `.backgroundExtensionEffect()`. Title/author/accent pick up the artwork
-/// palette when extraction has landed, falling back to semantic styling —
-/// render never blocks on extraction. The Resume button is the one tinted
-/// control on the page.
+/// `.backgroundExtensionEffect()`. Renders one `ContinueEntry` — book or
+/// podcast episode — through the identical layout (eyebrow / title /
+/// supporting line / progress / Resume + Details), so resuming feels the same
+/// no matter the medium. Color comes from the artwork in two places only —
+/// the wash and the accent — while the copy stays semantic, so the section
+/// reads the same way in both appearances. Render never blocks on extraction.
+/// The Resume button is the one tinted control on the page.
 struct HomeHeroCard: View {
     @Environment(AppState.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
-    let item: LibraryItem
-    let progress: AppState.ItemProgress?
+    let entry: AppState.ContinueEntry
     var maxContentWidth: CGFloat = 1400
     let onPlay: () -> Void
     let onOpen: () -> Void
 
     @State private var palette: ArtworkPalette?
 
-    private var coverURL: URL? { app.coverURL(itemID: item.id) }
+    private var coverURL: URL? { app.coverURL(itemID: entry.item.id) }
 
-    /// Palette text colors are guaranteed readable against the solid artwork
-    /// background — but the wash is soft, so the system background shows
-    /// through. In light appearance the wash is barely there, so text stays
-    /// semantic (`.neutral`); in dark, adopt the palette only when its tone
-    /// agrees with the scheme, per the ArtworkPalette `isDark` guidance.
-    private var text: ArtworkPalette {
-        guard colorScheme == .dark, let palette, palette.isDark else { return .neutral }
-        return palette
-    }
+    // Hero copy is always semantic (`.primary`/`.secondary`), never palette
+    // text. `ArtworkPalette` guarantees its text colors against the *solid*
+    // artwork background, but the wash is translucent (0.45 → 0.08 in dark),
+    // so what the glyphs actually sit on is mostly the window background. A
+    // bright cover — say a brick red at luminance 0.17 — still reports
+    // `isDark`, so the palette hands back near-black text that vanishes on the
+    // dark chrome underneath. Semantic colors resolve against that real
+    // backdrop and stay legible in both appearances.
 
     /// THE one tinted control: the palette accent, unless its contrast against
     /// the white prominent-button label drops below ~3.0 — then the app accent.
@@ -131,7 +132,7 @@ struct HomeHeroCard: View {
         // opacity only, gentle .smooth spring, no slide theatrics.
         ZStack {
             heroRow
-                .id(item.id)
+                .id(entry.id)
                 .transition(.opacity)
         }
         .frame(maxWidth: maxContentWidth, alignment: .leading)
@@ -139,7 +140,7 @@ struct HomeHeroCard: View {
         .padding(.horizontal, Theme.Space.xl)
         .padding(.vertical, Theme.Space.l)
         .background { wash }
-        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.45), value: item.id)
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.45), value: entry.id)
         .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.45), value: palette)
         .task(id: coverURL) {
             palette = await PaletteStore.shared.palette(for: coverURL)
@@ -149,7 +150,7 @@ struct HomeHeroCard: View {
     private var heroRow: some View {
         HStack(alignment: .center, spacing: Theme.Space.l + 4) {
             Button(action: onOpen) {
-                CoverArt(url: coverURL, title: item.title)
+                CoverArt(url: coverURL, title: entry.title)
                     .frame(width: 180, height: 180)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous)
@@ -159,19 +160,15 @@ struct HomeHeroCard: View {
             .hoverLift()
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Continue")
-                    .font(.caption.weight(.semibold))
-                    .textCase(.uppercase)
-                    .tracking(1.2)
-                    .foregroundStyle(text.secondaryText)
-                Text(item.title)
+                eyebrow
+                Text(entry.title)
                     .font(.title.bold())
                     .lineLimit(2)
-                    .foregroundStyle(text.primaryText)
-                Text(item.author)
+                    .foregroundStyle(.primary)
+                Text(entry.subtitle)
                     .font(.title3)
                     .lineLimit(1)
-                    .foregroundStyle(text.secondaryText)
+                    .foregroundStyle(.secondary)
                 progressStrip
                 HStack(spacing: 10) {
                     Button(action: onPlay) {
@@ -189,6 +186,16 @@ struct HomeHeroCard: View {
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// "CONTINUE" for books; "CONTINUE · PODCAST" for episodes — the one quiet
+    /// media-type cue, in the slot least likely to compete with the content.
+    private var eyebrow: some View {
+        Text(entry.episode == nil ? "Continue" : "Continue · Podcast")
+            .font(.caption.weight(.semibold))
+            .textCase(.uppercase)
+            .tracking(1.2)
+            .foregroundStyle(.secondary)
     }
 
     /// Soft artwork-tinted wash behind the section. Fades toward the page below
@@ -218,7 +225,7 @@ struct HomeHeroCard: View {
                     Capsule().fill(.quaternary)
                     Capsule()
                         .fill(palette?.accent ?? .accentColor)
-                        .frame(width: max(4, geo.size.width * (progress?.fraction ?? 0)))
+                        .frame(width: max(4, geo.size.width * entry.progress.fraction))
                 }
             }
             .frame(height: 4)
@@ -226,16 +233,16 @@ struct HomeHeroCard: View {
                 .font(.caption)
                 .monospacedDigit()
                 .contentTransition(.numericText())
-                .foregroundStyle(text.secondaryText)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: 420, alignment: .leading)
         .padding(.top, 2)
         .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: remainingLabel)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: progress?.fraction ?? 0)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: entry.progress.fraction)
     }
 
     private var remainingLabel: String {
-        let remaining = (item.duration ?? 0) * (1 - (progress?.fraction ?? 0))
+        let remaining = (entry.duration ?? 0) * (1 - entry.progress.fraction)
         return durationString(remaining).map { "\($0) left" } ?? "Ready to play"
     }
 }

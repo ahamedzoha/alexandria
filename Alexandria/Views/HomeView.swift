@@ -32,6 +32,7 @@ struct HomeView: View {
             await app.loadStats()
             await app.loadRecentItems()
             await app.refreshRecentEpisodes()
+            await app.refreshEpisodeResumes()
             withAnimation(reduceMotion ? nil : .smooth(duration: 0.5)) { appeared = true }
         }
     }
@@ -47,27 +48,36 @@ struct HomeView: View {
                     .modifier(CenteredContent(maxWidth: contentMaxWidth))
                 }
 
-                if let hero = app.heroContinueItem {
+                if let hero = app.heroContinue {
                     // Full-bleed: the hero owns its own width cap + padding so
                     // its palette wash can run edge-to-edge under the chrome.
                     section(1) {
-                        HomeHeroCard(item: hero,
-                                     progress: app.progress(itemID: hero.id),
+                        HomeHeroCard(entry: hero,
                                      maxContentWidth: contentMaxWidth,
                                      onPlay: { play(hero) },
-                                     onOpen: { selected = hero })
+                                     onOpen: { selected = hero.item })
+                    }
+                }
+
+                // Directly under the hero so every resumable thing — books
+                // and podcast episodes — lives in one contiguous cluster.
+                if !app.continueShelfEntries.isEmpty {
+                    section(2) {
+                        ContinueShelf(title: "Continue Listening", symbol: "headphones",
+                                      entries: app.continueShelfEntries,
+                                      onSeeAll: { openLibrary(.inProgress) },
+                                      onOpen: { selected = $0 },
+                                      onPlay: { play($0) })
                     }
                 }
 
                 if !app.recentEpisodes.isEmpty {
-                    section(2) {
+                    section(3) {
                         EpisodeShelf(title: "Latest Episodes",
                                      symbol: "dot.radiowaves.left.and.right",
                                      episodes: app.recentEpisodes)
                     }
                 }
-                shelf(3, "Continue Listening", "headphones",
-                      Array(app.continueListening.dropFirst()), .inProgress)
                 shelf(4, "Discover", "sparkles", app.discoverPicks, .notStarted)
                 shelf(5, "Listen Again", "arrow.counterclockwise", app.recentlyFinished, .finished)
                 shelf(6, "Recently Added", "clock.badge.plus", app.recentItems, .all)
@@ -110,6 +120,12 @@ struct HomeView: View {
 
     private func play(_ item: LibraryItem) {
         startPlayback(item: item, app: app, player: player)
+    }
+
+    /// Resume a continue entry: books via the item, episodes directly (the
+    /// entry pins the exact episode — no resume heuristic re-run).
+    private func play(_ entry: AppState.ContinueEntry) {
+        startPlayback(item: entry.item, episode: entry.episode, app: app, player: player)
     }
 }
 

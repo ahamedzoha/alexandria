@@ -14,6 +14,16 @@ final class AppState {
     // Progress is keyed per item + episode (episodeID nil for book/item-level).
     struct ProgressKey: Hashable { let itemID: String; let episodeID: String? }
 
+    /// An in-progress podcast episode resolved to its owning show, ready for
+    /// the Home continue surfaces (hero + Continue Listening shelf). Progress
+    /// itself is looked up live in `progressByItem` — this only carries the
+    /// metadata that needs async resolution.
+    struct EpisodeResume: Identifiable, Sendable {
+        let episode: PodcastEpisode
+        let item: LibraryItem
+        var id: String { "\(item.id)|\(episode.id)" }
+    }
+
     struct ServerRef: Codable, Identifiable, Sendable {
         let id: String
         var name: String
@@ -68,8 +78,23 @@ final class AppState {
     // show a retry state. Cleared when a (re)load succeeds.
     var episodesLoadFailed: Set<String> = []
     // Latest episodes across podcast libraries as fetched from the server.
-    // HomeData's `recentEpisodes` re-orders these for the Home shelf.
+    // HomeData's `recentEpisodes` filters these for the Home shelf.
     var fetchedRecentEpisodes: [PodcastEpisode] = []
+    // In-progress podcast episodes resolved to (episode, show) pairs, most
+    // recently played first. Rebuilt by refreshEpisodeResumes(); consumers
+    // re-derive progress/ordering live from `progressByItem`, so entries here
+    // can't go stale between refreshes — only appear/disappear.
+    var episodeResumes: [EpisodeResume] = []
+    // Collapses overlapping refreshEpisodeResumes calls (sync loop + playback
+    // ticks): one pass runs at a time, and a call arriving mid-pass queues
+    // exactly one follow-up pass so fresher progress is never dropped.
+    @ObservationIgnored private var episodeResumeRefreshInFlight = false
+    @ObservationIgnored private var episodeResumeRefreshQueued = false
+    // Progress rows that failed to resolve (episode/show deleted server-side),
+    // keyed by "item|episode|lastUpdate". Skipped on later refreshes so one
+    // stale row can't refetch its show's episode list every 45s sync; the row
+    // is retried if it updates again (lastUpdate changes the key).
+    @ObservationIgnored private var unresolvedResumeRows: Set<String> = []
     let downloads = DownloadStore()
     // Items fetched individually via resolveItem (auto-play/next-episode
     // targets that aren't in `items` or `recentItems`), keyed by id.
@@ -144,8 +169,17 @@ final class AppState {
         case .all:
             break
         case .inProgress:
-            result = result.filter {
-                let p = progress(itemID: $0.id)
+            // Podcasts have no item-level progress row — a show is in
+            // progress when any of its episodes is. Keeps the Continue
+            // shelf's See All destination from landing on an empty page.
+            result = result.filter { item in
+                if item.isPodcast {
+                    return progressByItem.contains { key, p in
+                        key.itemID == item.id && key.episodeID != nil
+                            && p.fraction > 0.001 && !p.isFinished
+                    }
+                }
+                let p = progress(itemID: item.id)
                 return (p?.fraction ?? 0) > 0.001 && !(p?.isFinished ?? false)
             }
         case .finished:
@@ -262,6 +296,8 @@ final class AppState {
         episodesByItem = [:]
         episodesLoadFailed = []
         fetchedRecentEpisodes = []
+        episodeResumes = []
+        unresolvedResumeRows = []
         itemsByID = [:]
         selectedLibraryID = nil
         searchText = ""
@@ -341,7 +377,11 @@ final class AppState {
             if selectedLibraryID == nil { selectedLibraryID = libraries.first?.id }
             await loadProgress()
             await refreshRecentEpisodes()
+            // After loadItems: the grid content lands first (no empty-state
+            // flash while resumes resolve), and resolveItem then finds shows
+            // in the just-loaded items for free.
             if let id = selectedLibraryID { await loadItems(libraryID: id) }
+            await refreshEpisodeResumes()
         } catch {
             errorMessage = friendly(error)
         }
@@ -354,6 +394,7 @@ final class AppState {
         await downloads.flushPending(api: api)
         await loadProgress()
         await refreshRecentEpisodes()
+        await refreshEpisodeResumes()
         lastSyncedAt = Date()
         isSyncing = false
     }
@@ -513,6 +554,22 @@ final class AppState {
                          lastUpdate: Date().timeIntervalSince1970 * 1000)
         downloads.saveProgress(itemID: itemID, episodeID: episodeID, currentTime: time, duration: duration)
 
+        // A just-started episode isn't in episodeResumes yet — resolve it so
+        // the Home continue surfaces pick it up immediately. Gated on the
+        // episode being present in a local cache: when it isn't (offline
+        // playback of a download after relaunch, or a feed-pruned episode),
+        // a refresh could never resolve it either, and the per-tick calls
+        // would retry the network for the whole listening session. Finished
+        // rows are skipped — they can only drop entries, which the live
+        // continueQueue filter already does.
+        if let episodeID,
+           let p = progressByItem[key], !p.isFinished,
+           !episodeResumes.contains(where: { $0.item.id == itemID && $0.episode.id == episodeID }),
+           episodesByItem[itemID]?.contains(where: { $0.id == episodeID }) == true
+               || fetchedRecentEpisodes.contains(where: { $0.libraryItemId == itemID && $0.id == episodeID }) {
+            Task { await refreshEpisodeResumes() }
+        }
+
         enqueueProgressPatch(for: key) { [weak self] in
             guard let self else { return }
             do {
@@ -554,8 +611,10 @@ final class AppState {
     /// Fetch the expanded item and cache its episode list, merging the
     /// response's progress rows (include=progress) into `progressByItem` so
     /// episode state is current even before the next /api/me sync. Failures
-    /// are recorded in `episodesLoadFailed` so the episode UI can offer retry.
-    func loadEpisodes(itemID: String) async {
+    /// are recorded in `episodesLoadFailed` so the episode UI can offer retry;
+    /// `quiet` skips the user-facing error for background refreshes (a stale
+    /// progress row must not raise an alert on every sync).
+    func loadEpisodes(itemID: String, quiet: Bool = false) async {
         do {
             let expanded = try await api.fetchItemExpanded(itemID: itemID)
             episodesByItem[itemID] = expanded.episodes
@@ -570,9 +629,98 @@ final class AppState {
                 progressByItem[key] = incoming
             }
         } catch {
+            // Background (quiet) passes leave no user-facing traces: flagging
+            // episodesLoadFailed here would show a "Couldn't Load Episodes"
+            // retry state for a show the user never opened, off a server blip
+            // they never saw.
+            guard !quiet else { return }
             episodesLoadFailed.insert(itemID)
             errorMessage = friendly(error)
         }
+    }
+
+    /// Episode-level progress rows worth resuming (started, unfinished) as
+    /// (itemID, episodeID) pairs, most recently played first, capped. Static
+    /// and pure over the progress map so the selection is unit-testable
+    /// without constructing an AppState.
+    static func episodeResumeCandidates(
+        in progress: [ProgressKey: ItemProgress], limit: Int = 12
+    ) -> [(itemID: String, episodeID: String)] {
+        progress
+            .compactMap { key, p -> (String, String, Double)? in
+                guard let episodeID = key.episodeID,
+                      p.fraction > 0.001, !p.isFinished else { return nil }
+                return (key.itemID, episodeID, p.lastUpdate)
+            }
+            .sorted { $0.2 > $1.2 }
+            .prefix(limit)
+            .map { (itemID: $0.0, episodeID: $0.1) }
+    }
+
+    /// Rebuild `episodeResumes`: resolve each in-progress episode row to its
+    /// episode + owning show. Already-resolved entries are reused verbatim
+    /// (metadata doesn't change), then local caches (episodesByItem,
+    /// fetchedRecentEpisodes); only a full cache miss fetches the show's
+    /// episode list, quietly. Rows that no longer resolve (episode or show
+    /// deleted server-side) are skipped, never surfaced as errors. A call
+    /// arriving while a pass is in flight queues one follow-up pass, so a
+    /// refresh triggered by fresher progress is never silently dropped.
+    func refreshEpisodeResumes() async {
+        guard episodeResumeRefreshInFlight == false else {
+            episodeResumeRefreshQueued = true
+            return
+        }
+        episodeResumeRefreshInFlight = true
+        defer { episodeResumeRefreshInFlight = false }
+        repeat {
+            episodeResumeRefreshQueued = false
+            await runEpisodeResumePass()
+        } while episodeResumeRefreshQueued
+    }
+
+    private func runEpisodeResumePass() async {
+        let server = activeServerID
+        var resolved: [EpisodeResume] = []
+        for (itemID, episodeID) in Self.episodeResumeCandidates(in: progressByItem) {
+            // Bail the moment the account changes: later iterations would fire
+            // the old server's item IDs at the new server's API.
+            guard server == activeServerID else { return }
+
+            // Sticky: a previously resolved entry survives transient fetch
+            // failures (offline sync, server blip) instead of vanishing from
+            // the hero/shelf until some later pass re-resolves it.
+            if let existing = episodeResumes.first(where: { $0.item.id == itemID && $0.episode.id == episodeID }) {
+                resolved.append(existing)
+                continue
+            }
+
+            let stamp = progressByItem[ProgressKey(itemID: itemID, episodeID: episodeID)]?.lastUpdate ?? 0
+            let rowKey = "\(itemID)|\(episodeID)|\(stamp)"
+            guard !unresolvedResumeRows.contains(rowKey) else { continue }
+
+            var episode = episodesByItem[itemID]?.first { $0.id == episodeID }
+                ?? fetchedRecentEpisodes.first { $0.libraryItemId == itemID && $0.id == episodeID }
+            if episode == nil {
+                await loadEpisodes(itemID: itemID, quiet: true)
+                // Fetch failed (offline, server blip): retry next sync rather
+                // than tombstoning — a transient failure is not a deletion.
+                guard episodesByItem[itemID] != nil else { continue }
+                episode = episodesByItem[itemID]?.first { $0.id == episodeID }
+            }
+            guard let episode else {
+                // List is fresh and the episode isn't in it — genuinely gone
+                // (feed-pruned). Tombstone so it doesn't refetch every sync.
+                unresolvedResumeRows.insert(rowKey)
+                continue
+            }
+            // resolveItem misses are treated as transient too (retry next sync).
+            guard let item = await resolveItem(id: itemID) else { continue }
+            resolved.append(EpisodeResume(episode: episode, item: item))
+        }
+        // A server switch mid-resolution means these entries belong to the
+        // previous account — drop them; the new server's sync rebuilds.
+        guard server == activeServerID else { return }
+        episodeResumes = resolved
     }
 
     /// Latest episodes across every podcast library, as fetched. HomeData's

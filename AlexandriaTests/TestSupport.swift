@@ -20,3 +20,23 @@ func makeEpisode(
     let json = "{ \(fields.joined(separator: ", ")) }"
     return try JSONDecoder().decode(PodcastEpisode.self, from: Data(json.utf8))
 }
+
+/// Builds a LibraryItem from an inline JSON fixture — same decode path as
+/// production, mirroring `makeEpisode`.
+func makeItem(
+    id: String,
+    mediaType: String = "book",
+    title: String? = nil,
+    author: String? = nil,
+    duration: Double? = nil
+) throws -> LibraryItem {
+    var metadata = [String]()
+    if let title { metadata.append("\"title\": \"\(title)\"") }
+    if let author { metadata.append("\"authorName\": \"\(author)\"") }
+    var media = ["\"metadata\": { \(metadata.joined(separator: ", ")) }"]
+    if let duration { media.append("\"duration\": \(duration)") }
+    let json = """
+    { "id": "\(id)", "mediaType": "\(mediaType)", "media": { \(media.joined(separator: ", ")) } }
+    """
+    return try JSONDecoder().decode(LibraryItem.self, from: Data(json.utf8))
+}

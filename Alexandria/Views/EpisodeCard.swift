@@ -7,12 +7,16 @@ struct EpisodeCard: View {
     @Environment(AppState.self) private var app
     @Environment(PlayerEngine.self) private var player
     let episode: PodcastEpisode
+    /// Optional pre-resolved owning show (Continue shelf passes it) — display
+    /// fallback for episodes whose podcast isn't in the loaded library and
+    /// which carry no shell (episode-list fetches don't include one).
+    var show: LibraryItem? = nil
     @State private var hovering = false
 
     /// Owning podcast item when it's already in the loaded library — display
     /// only. Recent-episodes results may reference items outside the library,
-    /// so this can be nil (the card then renders from the podcast shell);
-    /// actions resolve the item on demand via `app.resolveItem(id:)`.
+    /// so this can be nil (the card then renders from `show` or the podcast
+    /// shell); actions resolve the item on demand via `app.resolveItem(id:)`.
     private var item: LibraryItem? {
         episode.libraryItemId.flatMap { app.item(byID: $0) }
     }
@@ -23,7 +27,7 @@ struct EpisodeCard: View {
     }
 
     private var showName: String {
-        item?.title ?? episode.podcast?.metadata?.title ?? "Podcast"
+        item?.title ?? show?.title ?? episode.podcast?.metadata?.title ?? "Podcast"
     }
 
     private var coverURL: URL? {
