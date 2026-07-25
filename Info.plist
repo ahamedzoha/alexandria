@@ -22,5 +22,13 @@
 	<string>XxVI3wBKcScuTYaxVooOgVc/R2AJyjDGmVTh1JOP2CI=</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<!-- The app is sandboxed, so Sparkle cannot spawn its installer from the
+	     app process — it must go through the Installer XPC service bundled in
+	     Sparkle.framework. Without this the update downloads, then fails with
+	     "An error occurred while launching the installer." The Downloader XPC
+	     service is deliberately NOT enabled: the app already holds the
+	     network.client entitlement. -->
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
 </dict>
 </plist>
