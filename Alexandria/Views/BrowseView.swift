@@ -25,12 +25,16 @@ struct SeriesGridView: View {
     }
 
     private var groups: [SeriesGroup] {
-        var buckets: [String: [String]] = [:]
+        var buckets: [String: [LibraryItem]] = [:]
         for item in app.items {
-            if let key = item.seriesBaseName, !key.isEmpty { buckets[key, default: []].append(item.id) }
+            if let key = item.seriesBaseName, !key.isEmpty { buckets[key, default: []].append(item) }
         }
         return buckets
-            .map { SeriesGroup(id: $0.key, count: $0.value.count, coverItemIDs: Array($0.value.prefix(3))) }
+            .map { name, books in
+                // Book 1 on top of the stack.
+                SeriesGroup(id: name, count: books.count,
+                            coverItemIDs: AppState.seriesOrdered(books, series: name).prefix(3).map(\.id))
+            }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 

@@ -28,11 +28,13 @@ func makeItem(
     mediaType: String = "book",
     title: String? = nil,
     author: String? = nil,
+    series: String? = nil,
     duration: Double? = nil
 ) throws -> LibraryItem {
     var metadata = [String]()
     if let title { metadata.append("\"title\": \"\(title)\"") }
     if let author { metadata.append("\"authorName\": \"\(author)\"") }
+    if let series { metadata.append("\"seriesName\": \"\(series)\"") }
     var media = ["\"metadata\": { \(metadata.joined(separator: ", ")) }"]
     if let duration { media.append("\"duration\": \(duration)") }
     let json = """

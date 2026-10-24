@@ -84,7 +84,7 @@ struct MainView: View {
                     ToolbarItem(placement: .primaryAction) {
                         Menu {
                             Picker("Sort by", selection: $app.sort) {
-                                ForEach(AppState.LibrarySort.allCases) { Text($0.rawValue).tag($0) }
+                                ForEach(app.availableSorts) { Text($0.rawValue).tag($0) }
                             }
                             Picker("Order", selection: $app.sortAscending) {
                                 Label("Ascending", systemImage: "arrow.up").tag(true)

@@ -34,6 +34,7 @@ final class AppState {
         case title = "Title"
         case author = "Author"
         case progress = "Progress"
+        case seriesOrder = "Series Order"   // only offered inside a series group
         var id: String { rawValue }
     }
 
@@ -217,10 +218,28 @@ final class AppState {
             result.sort { $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending }
         case .progress:
             result.sort { (progress(itemID: $0.id)?.fraction ?? 0) < (progress(itemID: $1.id)?.fraction ?? 0) }
+        case .seriesOrder:
+            result = Self.seriesOrdered(result, series: groupKind == .series ? groupValue ?? "" : "")
         }
         if !sortAscending { result.reverse() }
 
         return result
+    }
+
+    /// Books in reading order for `series`: by sequence, then title; books
+    /// with no sequence in that series go last.
+    static func seriesOrdered(_ items: [LibraryItem], series: String) -> [LibraryItem] {
+        items.sorted { a, b in
+            let sa = a.seriesSequence(in: series) ?? .infinity
+            let sb = b.seriesSequence(in: series) ?? .infinity
+            if sa != sb { return sa < sb }
+            return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+        }
+    }
+
+    /// Sorts the toolbar offers right now — Series Order only inside a series.
+    var availableSorts: [LibrarySort] {
+        LibrarySort.allCases.filter { $0 != .seriesOrder || groupKind == .series }
     }
 
     /// Pure title/author match over the loaded library, used by the global
@@ -313,6 +332,7 @@ final class AppState {
         searchText = ""
         groupKind = nil
         groupValue = nil
+        if sort == .seriesOrder { sort = .title }
         sidebar = .home
         errorMessage = nil
     }
@@ -492,11 +512,19 @@ final class AppState {
         groupKind = kind
         groupValue = value
         sidebar = .library
+        // A series opens in reading order; leaving one drops the series-only sort.
+        if kind == .series {
+            sort = .seriesOrder
+            sortAscending = true
+        } else if sort == .seriesOrder {
+            sort = .title
+        }
     }
 
     func clearGroup() {
         groupKind = nil
         groupValue = nil
+        if sort == .seriesOrder { sort = .title }
     }
 
     var groupLabel: String? {

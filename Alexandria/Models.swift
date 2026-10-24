@@ -65,6 +65,19 @@ struct LibraryItem: Decodable, Identifiable, Sendable, Hashable {
         }
         return raw
     }
+
+    /// Position within `series` ("The Dark Tower #7" → 7). The minified
+    /// seriesName lists every series a book belongs to ("A #2, B #5"), and
+    /// sequences can be fractional ("1.5" for a novella).
+    func seriesSequence(in series: String) -> Double? {
+        guard let raw = media?.metadata?.seriesName else { return nil }
+        for entry in raw.components(separatedBy: ", ") {
+            guard let hash = entry.range(of: " #", options: .backwards),
+                  entry[..<hash.lowerBound] == series else { continue }
+            return Double(entry[hash.upperBound...].prefix { $0.isNumber || $0 == "." })
+        }
+        return nil
+    }
 }
 
 // MARK: - Playback
