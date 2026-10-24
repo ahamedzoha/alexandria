@@ -25,8 +25,8 @@ final class PlayerEngine {
     private var currentIndex = 0
 
     // Progress reporting
-    private var itemID = ""
-    private var currentEpisodeID: String?   // set when a podcast episode is playing
+    private(set) var itemID = ""                // "" until something is loaded
+    private(set) var currentEpisodeID: String?   // set when a podcast episode is playing
     private var authToken: String?          // sent as a Bearer header on track requests
     private var tickCount = 0
     private var didFireFinished = false
@@ -57,6 +57,11 @@ final class PlayerEngine {
 
     var currentChapterTitle: String {
         chapters.last(where: { currentTime + 0.5 >= $0.start })?.title ?? ""
+    }
+
+    /// Index into `chapters` of the chapter under the playhead.
+    var currentChapterIndex: Int? {
+        chapters.lastIndex(where: { currentTime + 0.5 >= $0.start })
     }
 
     private var currentChapterEnd: Double? {

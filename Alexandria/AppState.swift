@@ -124,10 +124,18 @@ final class AppState {
     var autoPlayNextEpisodes: Bool = UserDefaults.standard.object(forKey: "autoPlayNextEpisodes") as? Bool ?? true {
         didSet { UserDefaults.standard.set(autoPlayNextEpisodes, forKey: "autoPlayNextEpisodes") }
     }
+    // The trailing Now Playing inspector; remembered across launches.
+    var showNowPlayingInfo: Bool = UserDefaults.standard.bool(forKey: "showNowPlayingInfo") {
+        didSet { UserDefaults.standard.set(showNowPlayingInfo, forKey: "showNowPlayingInfo") }
+    }
     var groupKind: Browse?
     var groupValue: String?
     var stats: LibraryStats?
     var authors: [AuthorRef] = []
+    // Expanded item + author records for the detail sheet and the Now Playing
+    // inspector, kept for the session so reopening either is instant.
+    @ObservationIgnored private var itemDetailCache: [String: ItemDetail] = [:]
+    @ObservationIgnored private var authorDetailCache: [String: AuthorDetail] = [:]
 
     init() {
         loadServers()
@@ -299,6 +307,8 @@ final class AppState {
         episodeResumes = []
         unresolvedResumeRows = []
         itemsByID = [:]
+        itemDetailCache = [:]
+        authorDetailCache = [:]
         selectedLibraryID = nil
         searchText = ""
         groupKind = nil
@@ -506,7 +516,22 @@ final class AppState {
     }
 
     func itemDetail(itemID: String) async -> ItemDetail? {
-        try? await api.itemDetail(itemID: itemID)
+        if let cached = itemDetailCache[itemID] { return cached }
+        let server = activeServerID
+        guard let detail = try? await api.itemDetail(itemID: itemID) else { return nil }
+        // A response that lands after a server switch belongs to the old server.
+        guard activeServerID == server else { return nil }
+        itemDetailCache[itemID] = detail
+        return detail
+    }
+
+    func authorDetail(id: String) async -> AuthorDetail? {
+        if let cached = authorDetailCache[id] { return cached }
+        let server = activeServerID
+        guard let author = try? await api.author(id: id) else { return nil }
+        guard activeServerID == server else { return nil }
+        authorDetailCache[id] = author
+        return author
     }
 
     func loadStats() async {
@@ -606,6 +631,14 @@ final class AppState {
     /// Cached episode list for a podcast item; nil until loadEpisodes has run.
     func episodes(for itemID: String) -> [PodcastEpisode]? {
         episodesByItem[itemID]
+    }
+
+    /// One episode from whatever is already in memory: the show's loaded
+    /// list, the recent-episodes feed, or the resolved continue entries.
+    func cachedEpisode(itemID: String, episodeID: String) -> PodcastEpisode? {
+        episodesByItem[itemID]?.first { $0.id == episodeID }
+            ?? fetchedRecentEpisodes.first { $0.libraryItemId == itemID && $0.id == episodeID }
+            ?? episodeResumes.first { $0.item.id == itemID && $0.episode.id == episodeID }?.episode
     }
 
     /// Fetch the expanded item and cache its episode list, merging the

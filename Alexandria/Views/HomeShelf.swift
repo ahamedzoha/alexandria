@@ -33,6 +33,7 @@ struct HomeShelf: View {
                 .padding(.vertical, 4)
             }
             .scrollClipDisabled()
+            .clipsShelfEdges()
             .contentMargins(.horizontal, Theme.Space.xl, for: .scrollContent)
             .scrollEdgeEffectStyle(.soft, for: .horizontal)
         }
@@ -104,6 +105,7 @@ struct ContinueShelf: View {
                 .padding(.vertical, 4)
             }
             .scrollClipDisabled()
+            .clipsShelfEdges()
             .contentMargins(.horizontal, Theme.Space.xl, for: .scrollContent)
             .scrollEdgeEffectStyle(.soft, for: .horizontal)
         }
@@ -178,6 +180,7 @@ struct EpisodeShelf: View {
                 .padding(.vertical, 4)
             }
             .scrollClipDisabled()
+            .clipsShelfEdges()
             .contentMargins(.horizontal, Theme.Space.xl, for: .scrollContent)
             .scrollEdgeEffectStyle(.soft, for: .horizontal)
         }
@@ -210,5 +213,14 @@ struct SectionHeader: View {
                 .help("Show all in Library")
             }
         }
+    }
+}
+
+private extension View {
+    /// Shelves draw past their bounds so hover lift and shadows aren't cut off,
+    /// but they must stop at the column's sides — otherwise covers slide in
+    /// under the Now Playing inspector. Clips horizontally only.
+    func clipsShelfEdges() -> some View {
+        mask { Rectangle().padding(.vertical, -Theme.Space.xl) }
     }
 }

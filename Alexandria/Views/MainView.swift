@@ -51,6 +51,9 @@ struct MainView: View {
                 detailContent
                 NowPlayingBar()
             }
+            .inspector(isPresented: $app.showNowPlayingInfo) {
+                NowPlayingInspector()
+            }
             .overlay {
                 // Scope the fade to the overlay only — animating the whole
                 // detail made the grid behind it jump on show/hide.
@@ -96,6 +99,12 @@ struct MainView: View {
                         }
                         .help("Sort and filter")
                     }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { app.showNowPlayingInfo.toggle() } label: {
+                        Label("Now Playing Info", systemImage: "sidebar.trailing")
+                    }
+                    .help(app.showNowPlayingInfo ? "Hide Now Playing Info" : "Show Now Playing Info")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button { Task { await app.syncNow() } } label: {

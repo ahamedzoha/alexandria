@@ -2,9 +2,11 @@ import SwiftUI
 import AppKit
 
 struct NowPlayingBar: View {
+    @Environment(AppState.self) private var app
     @Environment(PlayerEngine.self) private var player
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var palette: ArtworkPalette?
+    @State private var infoHover = false
     @State private var scrubTime: Double?
     @State private var backSkips = 0
     @State private var forwardSkips = 0
@@ -18,6 +20,7 @@ struct NowPlayingBar: View {
             ViewThatFits(in: .horizontal) {
                 fullBar
                 compactBar
+                minimalBar   // detail column squeezed by the inspector
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -38,8 +41,12 @@ struct NowPlayingBar: View {
 
     private var fullBar: some View {
         HStack(spacing: 14) {
-            artwork
-            titleBlock.frame(width: 180, alignment: .leading)
+            infoToggle {
+                HStack(spacing: 14) {
+                    artwork
+                    titleBlock.frame(width: 180, alignment: .leading)
+                }
+            }
             transport
             scrubber
             sleepButton
@@ -49,11 +56,50 @@ struct NowPlayingBar: View {
 
     private var compactBar: some View {
         HStack(spacing: 12) {
-            artwork
-            titleBlock.frame(minWidth: 100, alignment: .leading).layoutPriority(1)
+            infoToggle {
+                HStack(spacing: 12) {
+                    artwork
+                    titleBlock.frame(minWidth: 100, alignment: .leading)
+                }
+            }
+            .layoutPriority(1)
             transport
             scrubber
         }
+    }
+
+    private var minimalBar: some View {
+        HStack(spacing: 12) {
+            infoToggle {
+                HStack(spacing: 12) {
+                    artwork
+                    titleBlock.frame(minWidth: 60, maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            transport
+        }
+    }
+
+    /// Artwork + title double as the way into the Now Playing inspector. The
+    /// fill shows on hover and stays while the inspector is open, like a
+    /// toggled toolbar button; the negative padding keeps the bar's layout
+    /// identical to a plain artwork/title pair.
+    private func infoToggle<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        Button { app.showNowPlayingInfo.toggle() } label: {
+            content()
+                .padding(4)
+                .background(Color.primary.opacity(app.showNowPlayingInfo ? 0.08 : (infoHover ? 0.05 : 0)),
+                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contentShape(Rectangle())
+                .padding(-4)
+        }
+        .buttonStyle(.plain)
+        .onHover { infoHover = $0 }
+        .help(app.showNowPlayingInfo ? "Hide Info" : "Show Info")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(player.currentTitle)
+        .accessibilityHint(app.showNowPlayingInfo ? "Hides the Now Playing details" : "Shows the Now Playing details")
+        .accessibilityAddTraits(app.showNowPlayingInfo ? .isSelected : [])
     }
 
     private var artwork: some View {

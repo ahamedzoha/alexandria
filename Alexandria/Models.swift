@@ -122,6 +122,14 @@ struct AuthorRef: Decodable, Identifiable, Sendable {
     let imagePath: String?
 }
 
+/// GET /api/authors/{id} — the author record with its bio.
+struct AuthorDetail: Decodable, Identifiable, Sendable {
+    let id: String
+    let name: String?
+    let description: String?
+    let imagePath: String?
+}
+
 // MARK: - Item detail (expanded)
 
 struct ItemDetail: Decodable, Sendable {
@@ -144,15 +152,30 @@ struct ItemDetail: Decodable, Sendable {
             let title: String?
         }
         struct Meta: Decodable, Sendable {
+            let title: String?
             let subtitle: String?
             let authorName: String?
             let narratorName: String?
             let seriesName: String?
+            let authors: [Credit]?      // books: [{id, name}]
+            let narrators: [String]?
+            let series: [SeriesEntry]?  // books: [{id, name, sequence}]
             let genres: [String]?
             let publishedYear: String?
             let publisher: String?
             let description: String?
             let language: String?
+            let isbn: String?
+            let asin: String?
+        }
+        struct Credit: Decodable, Sendable {
+            let id: String?
+            let name: String?
+        }
+        struct SeriesEntry: Decodable, Sendable {
+            let id: String?
+            let name: String?
+            let sequence: String?
         }
     }
 }

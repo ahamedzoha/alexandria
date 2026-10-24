@@ -128,6 +128,11 @@ struct APIClient: Sendable {
         return try await send(req, as: AuthorsResponse.self).authors
     }
 
+    func author(id: String) async throws -> AuthorDetail {
+        let req = try request("api/authors/\(id)")
+        return try await send(req, as: AuthorDetail.self)
+    }
+
     /// Token-free — consumers (CoverCache) authenticate with a Bearer header.
     func authorImageURL(authorID: String) -> URL? {
         try? makeURL("api/authors/\(authorID)/image")

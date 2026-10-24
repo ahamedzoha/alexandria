@@ -7,7 +7,6 @@ struct ItemDetailView: View {
     let item: LibraryItem
 
     @State private var detail: ItemDetail?
-    @State private var descriptionExpanded = false
     @State private var chaptersExpanded = false
     /// True while the Play/Resume tap is building a session — the button
     /// disables so a slow server can't collect duplicate taps.
@@ -84,18 +83,7 @@ struct ItemDetailView: View {
 
     @ViewBuilder private var podcastDescription: some View {
         if let description = item.media?.metadata?.description, !description.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(cleaned(description))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(descriptionExpanded ? nil : 4)
-                    .textSelection(.enabled)
-                Button(descriptionExpanded ? "Read less" : "Read more") {
-                    withAnimation(.easeInOut(duration: 0.2)) { descriptionExpanded.toggle() }
-                }
-                .buttonStyle(.link)
-                .font(.callout)
-            }
+            ExpandableText(text: plainText(fromHTML: description))
         }
     }
 
@@ -216,31 +204,16 @@ struct ItemDetailView: View {
     // MARK: Info grid
 
     private var infoGrid: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            infoRow("Narrators", item.narrator)
-            infoRow("Published", meta?.publishedYear)
-            infoRow("Publisher", meta?.publisher)
-            infoRow("Genres", meta?.genres?.joined(separator: ", "))
-            infoRow("Tags", detail?.media?.tags?.joined(separator: ", "))
-            infoRow("Language", meta?.language)
-            infoRow("Duration", durationString(detail?.media?.duration ?? item.duration))
-            infoRow("Size", sizeString(detail?.media?.size))
-        }
-    }
-
-    @ViewBuilder private func infoRow(_ label: String, _ value: String?) -> some View {
-        if let value, !value.isEmpty {
-            HStack(alignment: .top, spacing: 12) {
-                Text(label.uppercased())
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 96, alignment: .leading)
-                Text(value)
-                    .font(.callout)
-                    .textSelection(.enabled)
-                Spacer(minLength: 0)
-            }
-        }
+        MetadataRows(rows: [
+            ("Narrators", item.narrator),
+            ("Published", meta?.publishedYear),
+            ("Publisher", meta?.publisher),
+            ("Genres", meta?.genres?.joined(separator: ", ")),
+            ("Tags", detail?.media?.tags?.joined(separator: ", ")),
+            ("Language", meta?.language),
+            ("Duration", durationString(detail?.media?.duration ?? item.duration)),
+            ("Size", sizeString(detail?.media?.size)),
+        ])
     }
 
     // MARK: Progress
@@ -279,18 +252,7 @@ struct ItemDetailView: View {
 
     @ViewBuilder private var descriptionSection: some View {
         if let description = meta?.description, !description.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(cleaned(description))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(descriptionExpanded ? nil : 4)
-                    .textSelection(.enabled)
-                Button(descriptionExpanded ? "Read less" : "Read more") {
-                    withAnimation(.easeInOut(duration: 0.2)) { descriptionExpanded.toggle() }
-                }
-                .buttonStyle(.link)
-                .font(.callout)
-            }
+            ExpandableText(text: plainText(fromHTML: description))
         }
     }
 
@@ -309,22 +271,22 @@ struct ItemDetailView: View {
                     .buttonStyle(.plain)
 
                     if chaptersExpanded {
-                        LazyVStack(spacing: 0) {
+                        // Click-to-jump only when this book is the one loaded.
+                        let isLoaded = player.itemID == item.id
+                        let current = isLoaded ? player.currentChapterIndex : nil
+                        LazyVStack(spacing: 2) {
                             ForEach(Array(chapters.enumerated()), id: \.offset) { index, chapter in
-                                HStack {
-                                    Text("\(index + 1)").foregroundStyle(.secondary)
-                                        .frame(width: 34, alignment: .leading)
-                                    Text(chapter.title ?? "Chapter \(index + 1)").lineLimit(1)
-                                    Spacer()
-                                    Text(Format.timestamp(chapter.start ?? 0))
-                                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                                }
-                                .font(.callout)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 7)
-                                .background(index.isMultiple(of: 2) ? Color.primary.opacity(0.03) : .clear)
+                                let start = chapter.start ?? 0
+                                ChapterRow(number: index + 1,
+                                           title: chapter.title ?? "Chapter \(index + 1)",
+                                           start: start,
+                                           isCurrent: index == current,
+                                           isPlayed: current.map { index < $0 } ?? false,
+                                           onSelect: isLoaded ? { player.seek(to: start) } : nil)
                             }
                         }
+                        .padding(.horizontal, 4)
+                        .padding(.bottom, 8)
                     }
                 }
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -378,16 +340,6 @@ struct ItemDetailView: View {
         .keyboardShortcut(.cancelAction)
         .help("Close")
         .padding(14)
-    }
-
-    // MARK: Helpers
-
-    private func cleaned(_ html: String) -> String {
-        html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&#39;", with: "'")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
 }

@@ -48,6 +48,11 @@ struct AlexandriaApp: App {
                     .keyboardShortcut(.leftArrow, modifiers: .command)
                     .disabled(player.chapters.isEmpty)
                 Divider()
+                Button(app.showNowPlayingInfo ? "Hide Info" : "Show Info") {
+                    app.showNowPlayingInfo.toggle()
+                }
+                .keyboardShortcut("i", modifiers: .command)
+                Divider()
                 Toggle("Auto-Play Next Episode", isOn: Binding(
                     get: { app.autoPlayNextEpisodes },
                     set: { app.autoPlayNextEpisodes = $0 }
