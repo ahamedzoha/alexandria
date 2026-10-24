@@ -7,6 +7,7 @@ struct ItemDetailView: View {
     let item: LibraryItem
 
     @State private var detail: ItemDetail?
+    @State private var detailLoaded = false
     @State private var chaptersExpanded = false
     /// True while the Play/Resume tap is building a session — the button
     /// disables so a slow server can't collect duplicate taps.
@@ -33,6 +34,7 @@ struct ItemDetailView: View {
                 await app.loadEpisodes(itemID: item.id)
             } else {
                 detail = await app.itemDetail(itemID: item.id)
+                detailLoaded = true
             }
         }
     }
@@ -40,6 +42,9 @@ struct ItemDetailView: View {
     private var bookContent: some View {
         VStack(alignment: .leading, spacing: 22) {
             header
+            if app.webRatingsEnabled {
+                RatingsSection(query: ratingsQuery)
+            }
             infoGrid
             progressCard
             descriptionSection
@@ -194,6 +199,13 @@ struct ItemDetailView: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
         }
+    }
+
+    /// Waits for the detail fetch; falls back to the list item's fields if it failed.
+    private var ratingsQuery: RatingsQuery? {
+        guard detailLoaded else { return nil }
+        return RatingsQuery(meta: meta, fallbackTitle: item.title,
+                            fallbackAuthor: item.author, fallbackNarrator: item.narrator)
     }
 
     private var playLabel: String {

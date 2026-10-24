@@ -56,6 +56,11 @@ private struct NowPlayingDetails: View {
                     header
                     NowPlayingProgressLine()
 
+                    if app.webRatingsEnabled && !isEpisode {
+                        Divider()
+                        RatingsSection(query: ratingsQuery, accent: accent)
+                    }
+
                     if !player.chapters.isEmpty {
                         Divider()
                         ChapterSection(accent: accent) { id in
@@ -78,6 +83,14 @@ private struct NowPlayingDetails: View {
         .task(id: player.coverURL) {
             palette = await PaletteStore.shared.palette(for: player.coverURL)
         }
+    }
+
+    /// Waits for the detail fetch; if that failed (offline), matches on what
+    /// the player knows.
+    private var ratingsQuery: RatingsQuery? {
+        guard loadState != .loading else { return nil }
+        return RatingsQuery(meta: meta, fallbackTitle: player.currentTitle,
+                            fallbackAuthor: player.currentAuthor, fallbackNarrator: item?.narrator)
     }
 
     // MARK: Header
@@ -183,7 +196,8 @@ private struct NowPlayingDetails: View {
         let title = meta?.title ?? player.currentTitle
         let author = byline
         VStack(alignment: .leading, spacing: 8) {
-            if let url = ExternalLinks.audible(asin: meta?.asin, title: title, author: author) {
+            if let url = ExternalLinks.audible(asin: meta?.asin, title: title, author: author,
+                                              domain: app.audibleStore.domain) {
                 externalLink("Audible", url)
             }
             if let url = ExternalLinks.goodreads(isbn: meta?.isbn, title: title, author: author) {

@@ -60,6 +60,11 @@ struct AlexandriaApp: App {
             }
         }
 
+        Settings {
+            SettingsView()
+                .environment(app)
+        }
+
         MenuBarExtra {
             MiniPlayerView()
                 .environment(app)

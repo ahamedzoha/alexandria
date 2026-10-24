@@ -175,27 +175,12 @@ struct ChapterRow: View {
 /// Storefront links for a book. Audible goes straight to the product when the
 /// server has its ASIN; everything else is a search.
 enum ExternalLinks {
-    /// Audible storefront for the user's region (catalog and ratings differ per store).
-    static var audibleDomain: String {
-        switch Locale.current.region?.identifier {
-        case "GB": "audible.co.uk"
-        case "CA": "audible.ca"
-        case "AU": "audible.com.au"
-        case "DE": "audible.de"
-        case "FR": "audible.fr"
-        case "IT": "audible.it"
-        case "ES": "audible.es"
-        case "JP": "audible.co.jp"
-        case "IN": "audible.in"
-        default: "audible.com"
-        }
-    }
-
-    static func audible(asin: String?, title: String, author: String) -> URL? {
+    static func audible(asin: String?, title: String, author: String,
+                        domain: String = AudibleStore.automatic.domain) -> URL? {
         if let asin, !asin.isEmpty {
-            return URL(string: "https://www.\(audibleDomain)/pd/\(asin)")
+            return URL(string: "https://www.\(domain)/pd/\(asin)")
         }
-        return search("https://www.\(audibleDomain)/search", "keywords", "\(title) \(author)")
+        return search("https://www.\(domain)/search", "keywords", "\(title) \(author)")
     }
 
     static func goodreads(isbn: String?, title: String, author: String) -> URL? {

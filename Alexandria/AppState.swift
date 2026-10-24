@@ -125,6 +125,14 @@ final class AppState {
     var autoPlayNextEpisodes: Bool = UserDefaults.standard.object(forKey: "autoPlayNextEpisodes") as? Bool ?? true {
         didSet { UserDefaults.standard.set(autoPlayNextEpisodes, forKey: "autoPlayNextEpisodes") }
     }
+    // Settings ▸ Ratings: look up Audible / Open Library ratings, and which
+    // Audible store to ask.
+    var webRatingsEnabled: Bool = UserDefaults.standard.object(forKey: "webRatingsEnabled") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(webRatingsEnabled, forKey: "webRatingsEnabled") }
+    }
+    var audibleStore: AudibleStore = AudibleStore(rawValue: UserDefaults.standard.string(forKey: "audibleStore") ?? "") ?? .automatic {
+        didSet { UserDefaults.standard.set(audibleStore.rawValue, forKey: "audibleStore") }
+    }
     // The trailing Now Playing inspector; remembered across launches.
     var showNowPlayingInfo: Bool = UserDefaults.standard.bool(forKey: "showNowPlayingInfo") {
         didSet { UserDefaults.standard.set(showNowPlayingInfo, forKey: "showNowPlayingInfo") }
