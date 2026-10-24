@@ -188,6 +188,62 @@ struct OpenLibraryRatings: Decodable, Sendable {
     let summary: Summary?
 }
 
+// MARK: - Reviews
+
+/// One Audible customer review. Older reviews use a "Guided" format: canned
+/// questions with (often blank) answers instead of a free-text body.
+struct AudibleReview: Decodable, Identifiable, Sendable {
+    struct Ratings: Decodable, Sendable {
+        let overallRating: Int?
+    }
+    struct GuidedResponse: Decodable, Sendable {
+        let question: String?
+        let answer: String?
+    }
+    /// A readable piece of the review: the answer to a guided prompt, or the
+    /// whole free-text body (no prompt).
+    struct Part: Hashable, Sendable {
+        let prompt: String?
+        let text: String
+    }
+
+    let id: String
+    let authorName: String?
+    let title: String?
+    let body: String?
+    let format: String?
+    let guidedResponses: [GuidedResponse]?
+    let ratings: Ratings?
+    let submissionDate: String?   // ISO 8601
+
+    var date: Date? { submissionDate.flatMap { try? Date($0, strategy: .iso8601) } }
+
+    /// Names and titles arrive entity-escaped (`Jim &quot;The Impatient&quot;`).
+    var displayAuthor: String? { authorName.map(plainText(fromHTML:)).flatMap { $0.isEmpty ? nil : $0 } }
+    var displayTitle: String? { title.map(plainText(fromHTML:)).flatMap { $0.isEmpty ? nil : $0 } }
+
+    var parts: [Part] {
+        if format == "Guided", let guided = guidedResponses {
+            return guided.compactMap { response in
+                let answer = (response.answer ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !answer.isEmpty else { return nil }
+                let prompt = response.question?.trimmingCharacters(in: .whitespacesAndNewlines)
+                // The catch-all prompt adds nothing above its answer.
+                return Part(prompt: prompt == "Any additional comments?" ? nil : prompt, text: answer)
+            }
+        }
+        // Bodies arrive with their markup escaped ("&lt;br/>"); unescape the
+        // brackets first so line breaks survive the HTML flattening.
+        let unescaped = (body ?? "")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+        let text = plainText(fromHTML: unescaped)
+        return text.isEmpty ? [] : [Part(prompt: nil, text: text)]
+    }
+}
+
+struct AudibleReviewsPage: Decodable, Sendable { let customerReviews: [AudibleReview]? }
+
 // MARK: - Matching
 
 /// Picks the search result that is actually this book. Search returns every
@@ -352,6 +408,17 @@ enum RatingsClient {
         }
     }
 
+    /// The most helpful reviews that have something to read.
+    static func reviews(asin: String, domain: String, limit: Int = 3) async -> Outcome<[AudibleReview]> {
+        let params = ["num_results": "10", "sort_by": "MostHelpful"]
+        switch await fetch(AudibleReviewsPage.self, url("https://api.\(domain)/1.0/catalog/products/\(asin)/reviews", params)) {
+        case .found(let page):
+            return .found(Array((page.customerReviews ?? []).filter { !$0.parts.isEmpty }.prefix(limit)))
+        case .notFound: return .found([])
+        case .failed: return .failed
+        }
+    }
+
     static func summary(_ product: AudibleProduct, domain: String) -> BookRatings.Audible? {
         func score(_ d: AudibleProduct.Rating.Distribution?) -> RatingScore? {
             guard let d, let average = d.averageRating, let count = d.numRatings, count > 0 else { return nil }
@@ -466,6 +533,7 @@ final class RatingsStore {
 
     private var memory: [String: BookRatings] = [:]
     private var inFlight: [String: Task<BookRatings?, Never>] = [:]
+    private var reviewsCache: [String: [AudibleReview]] = [:]
 
     private init() {}
 
@@ -485,6 +553,16 @@ final class RatingsStore {
         inFlight[key] = nil
         if let ratings { memory[key] = ratings }
         return ratings
+    }
+
+    /// Fetched only when the reader opens the reviews; kept for the session.
+    /// nil when the request failed.
+    func reviews(for audible: BookRatings.Audible) async -> [AudibleReview]? {
+        let key = "\(audible.domain)|\(audible.asin)"
+        if let hit = reviewsCache[key] { return hit }
+        guard let reviews = await RatingsClient.reviews(asin: audible.asin, domain: audible.domain).value else { return nil }
+        reviewsCache[key] = reviews
+        return reviews
     }
 
     private static func cacheKey(_ q: RatingsQuery, domain: String) -> String {

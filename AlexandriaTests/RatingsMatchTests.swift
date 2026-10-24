@@ -116,3 +116,45 @@ final class RatingsMatchTests: XCTestCase {
         XCTAssertEqual(AudibleStore.forRegion(nil), .us)
     }
 }
+
+/// Review fixtures trimmed from Audible's /reviews responses.
+final class AudibleReviewTests: XCTestCase {
+    private func decode(_ json: String) throws -> AudibleReview {
+        try RatingsClient.decoder.decode(AudibleReview.self, from: Data(json.utf8))
+    }
+
+    func testFreeformBodyKeepsEscapedLineBreaks() throws {
+        let review = try decode("""
+        { "id": "1", "format": "Freeform", "title": "A Surrealistic Western",
+          "body": "I really want to be in on the joke.&lt;br/>&lt;br/>The Gunslinger is a story &amp; more.",
+          "submission_date": "2012-06-19T21:06:37Z", "ratings": { "overall_rating": 3 } }
+        """)
+        XCTAssertEqual(review.parts, [.init(prompt: nil, text: "I really want to be in on the joke.\n\nThe Gunslinger is a story & more.")])
+        XCTAssertNotNil(review.date)
+    }
+
+    func testGuidedReviewKeepsOnlyAnsweredPrompts() throws {
+        let review = try decode("""
+        { "id": "2", "format": "Guided", "body": "[{\\"ignored\\": true}]",
+          "guided_responses": [
+            { "question": "Would you listen to it again?", "answer": "No, not again." },
+            { "question": "What did you like best about this story?", "answer": "  " },
+            { "question": "Any additional comments?", "answer": "I'll finish the series." } ] }
+        """)
+        XCTAssertEqual(review.parts, [
+            .init(prompt: "Would you listen to it again?", text: "No, not again."),
+            .init(prompt: nil, text: "I'll finish the series."),
+        ])
+    }
+
+    func testReviewerNameAndTitleDecodeEntities() throws {
+        let review = try decode(#"{ "id": "4", "author_name": "Jim &quot;The Impatient&quot;", "title": "Tom &amp; Jerry" }"#)
+        XCTAssertEqual(review.displayAuthor, "Jim \"The Impatient\"")
+        XCTAssertEqual(review.displayTitle, "Tom & Jerry")
+    }
+
+    func testReviewWithNothingToReadHasNoParts() throws {
+        let review = try decode(#"{ "id": "3", "format": "Guided", "guided_responses": [{ "question": "Q?", "answer": "" }] }"#)
+        XCTAssertTrue(review.parts.isEmpty)
+    }
+}

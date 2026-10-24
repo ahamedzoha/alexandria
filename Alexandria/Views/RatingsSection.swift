@@ -79,6 +79,9 @@ struct RatingsSection: View {
                 if let openLibrary = ratings.openLibrary {
                     secondaryLine(openLibrary)
                 }
+                if audible.reviewCount > 0 {
+                    ReviewsDisclosure(audible: audible)
+                }
             } else if let openLibrary = ratings.openLibrary {
                 headline(openLibrary.score, source: "Open Library", url: openLibrary.url)
             }
@@ -131,6 +134,131 @@ struct RatingsSection: View {
         }
         .font(.callout)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Reviews stay shut until asked for: the book may be mid-listen, and the
+/// most helpful reviews are the likeliest to discuss the ending. Nothing is
+/// fetched until the reader opens them.
+private struct ReviewsDisclosure: View {
+    let audible: BookRatings.Audible
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                    Text("\(audible.reviewCount.formatted()) \(audible.reviewCount == 1 ? "Review" : "Reviews")")
+                        .font(.callout.weight(.medium))
+                    Text("May contain spoilers")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(audible.reviewCount) reviews, may contain spoilers")
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            .accessibilityAddTraits(.isButton)
+
+            if expanded {
+                ReviewList(audible: audible)
+                    .transition(.opacity)
+            }
+        }
+    }
+}
+
+private struct ReviewList: View {
+    let audible: BookRatings.Audible
+
+    private enum Phase {
+        case loading
+        case loaded([AudibleReview])
+        case failed
+    }
+
+    @State private var phase = Phase.loading
+    @State private var attempt = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            switch phase {
+            case .loading:
+                ProgressView().controlSize(.small)
+            case .failed:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Reviews aren't available right now.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Button("Try Again") { attempt += 1 }
+                        .buttonStyle(.link)
+                        .font(.callout)
+                }
+            case .loaded(let reviews):
+                ForEach(Array(reviews.enumerated()), id: \.element.id) { index, review in
+                    if index > 0 { Divider() }
+                    ReviewView(review: review)
+                }
+            }
+            if let url = audible.productURL {
+                Link("More Reviews on Audible", destination: url)
+                    .font(.callout)
+                    .help(url.absoluteString)
+            }
+        }
+        .task(id: attempt) {
+            phase = .loading
+            phase = await RatingsStore.shared.reviews(for: audible).map(Phase.loaded) ?? .failed
+        }
+    }
+}
+
+private struct ReviewView: View {
+    let review: AudibleReview
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let title = review.displayTitle {
+                Text(title)
+                    .font(.callout.weight(.semibold))
+                    .textSelection(.enabled)
+            }
+            HStack(spacing: 6) {
+                if let stars = review.ratings?.overallRating, stars > 0 {
+                    StarRating(value: Double(stars))
+                }
+                // A long name truncates; the date always shows whole.
+                if let author = review.displayAuthor {
+                    Text(author).lineLimit(1)
+                }
+                if let date = review.date {
+                    Text("· \(date.formatted(date: .abbreviated, time: .omitted))").fixedSize()
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            ForEach(review.parts, id: \.self) { part in
+                if let prompt = part.prompt {
+                    Text(prompt)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+                }
+                ExpandableText(text: part.text, lineLimit: 5)
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 
