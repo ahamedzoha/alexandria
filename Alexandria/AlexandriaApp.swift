@@ -58,6 +58,19 @@ struct AlexandriaApp: App {
                 }
                 .keyboardShortcut("u", modifiers: [.command, .option])
                 Divider()
+                Picker("Sound", selection: Binding(
+                    get: { player.soundProfile.preset },
+                    set: { app.applySound(.preset($0), to: player) }
+                )) {
+                    ForEach(SoundProfile.Preset.allCases) { Text($0.title).tag($0) }
+                }
+                .disabled(player.itemID.isEmpty)
+                Toggle("Compare with Original", isOn: Binding(
+                    get: { player.isComparingSound },
+                    set: { player.isComparingSound = $0 }
+                ))
+                .disabled(!player.soundProfile.isEnhanced)
+                Divider()
                 Toggle("Continue Playing Up Next", isOn: Binding(
                     get: { app.autoPlayNextEpisodes },
                     set: { app.autoPlayNextEpisodes = $0 }

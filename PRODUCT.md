@@ -34,6 +34,7 @@ The Mac-native audiobookshelf client. Other clients are iOS-first or wrap the we
 - **Library:** grid and table, sort and filter; Browse by Authors, Series (in reading order), Narrators; a Stats page.
 - **Podcasts:** episode lists in the style of Apple Podcasts, per-show episode order, played state, downloads per episode.
 - **Playback:** gapless multi-track books with chapters, skip, speed, a sleep timer shaped by chapters and episodes, Up Next (automatic from the show or series, editable, saved per server), media keys, Now Playing, a menu-bar mini player, Space to play/pause.
+- **Sound:** per book or per series, Original / Voice Boost (louder, steadier, clearer) / Restore (plus ML voice isolation against tape hiss), with hold-to-compare and fine-tune sliders. Built from Apple's own audio units in the playback tap; nothing leaves the Mac.
 - **Now Playing inspector:** details, chapters, and opt-in ratings and reviews from Audible and Open Library (spoilers collapsed).
 - **Search:** global dropdown with keyboard navigation, ⌘F from anywhere.
 - **Durable constraints:**

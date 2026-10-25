@@ -24,7 +24,7 @@ struct SoundProfile: Codable, Sendable, Equatable {
             switch self {
             case .original: "As recorded."
             case .voiceBoost: "Louder, steadier and clearer narration."
-            case .restore: "Voice Boost, plus removing tape hiss and room noise."
+            case .restore: "Voice Boost, without the tape hiss and room noise."
             }
         }
     }

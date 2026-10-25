@@ -21,6 +21,19 @@ struct SettingsView: View {
             }
 
             Section {
+                Picker("Books without their own setting", selection: $app.defaultSoundPreset) {
+                    ForEach(SoundProfile.Preset.allCases) { preset in
+                        Text(preset.title).tag(preset)
+                    }
+                }
+            } header: {
+                Text("Sound")
+            } footer: {
+                Text("Voice Boost makes quiet narration louder and clearer; Restore also removes tape hiss and room noise, which suits older recordings. Change it for any book from the Now Playing bar.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle("Show ratings from the web", isOn: $app.webRatingsEnabled)
                 Picker("Audible store", selection: $app.audibleStore) {
                     ForEach(AudibleStore.allCases) { store in

@@ -12,6 +12,7 @@ struct NowPlayingBar: View {
     @State private var forwardSkips = 0
     @State private var showSpeedPopover = false
     @State private var showSleepPopover = false
+    @State private var showSoundPopover = false
 
     var body: some View {
         if player.currentTitle.isEmpty {
@@ -50,6 +51,7 @@ struct NowPlayingBar: View {
             transport
             scrubber
             sleepButton
+            soundButton
             speedButton
             queueButton
         }
@@ -249,6 +251,22 @@ struct NowPlayingBar: View {
         .help("Sleep timer")
         .popover(isPresented: $showSleepPopover) {
             SleepTimerPopover(accent: accent)
+        }
+    }
+
+    private var soundButton: some View {
+        let enhanced = player.soundProfile.isEnhanced
+        return Button { showSoundPopover.toggle() } label: {
+            Image(systemName: "waveform.and.person.filled")
+                .foregroundStyle(enhanced ? accent : .secondary)
+        }
+        .buttonStyle(.borderless)
+        .fixedSize()
+        .help(enhanced ? "Sound: \(player.soundProfile.preset.title)" : "Sound")
+        .accessibilityLabel("Sound")
+        .accessibilityValue(player.soundProfile.preset.title)
+        .popover(isPresented: $showSoundPopover) {
+            SoundPopover(accent: accent)
         }
     }
 
@@ -510,4 +528,143 @@ struct SleepTimerPopover: View {
 
     /// Countdown readout: "m:ss", or "h:mm:ss" past an hour.
     static func clock(_ seconds: Double) -> String { Format.timestamp(seconds) }
+}
+
+/// Sound for what's playing: Original, Voice Boost or Restore — kept for
+/// this book, or shared with its whole series — with hold-to-compare and
+/// three fine-tune sliders. Changes are heard immediately.
+struct SoundPopover: View {
+    @Environment(AppState.self) private var app
+    @Environment(PlayerEngine.self) private var player
+    let accent: Color
+    @State private var fineTune = false
+
+    /// The loaded book, when Alexandria knows it (always, after a normal start).
+    private var item: LibraryItem? {
+        app.playingItem.flatMap { $0.id == player.itemID ? $0 : nil }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Sound")
+                .font(.headline)
+
+            VStack(spacing: 2) {
+                ForEach(SoundProfile.Preset.allCases) { presetRow($0) }
+            }
+
+            if player.soundProfile.isEnhanced {
+                Divider()
+                compareButton
+                if let item, let series = item.seriesBaseName {
+                    Toggle(isOn: Binding(get: { app.soundSharedWithSeries(item) },
+                                         set: { app.shareSoundWithSeries($0, for: item) })) {
+                        Text("Use for all of \(Text(series).italic())")
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .toggleStyle(.checkbox)
+                }
+                DisclosureGroup("Fine-Tune", isExpanded: $fineTune) {
+                    sliders.padding(.top, Theme.Space.s)
+                }
+            }
+        }
+        .padding(Theme.Space.m)
+        .frame(width: 320)
+        .onDisappear { player.isComparingSound = false }
+    }
+
+    private func presetRow(_ preset: SoundProfile.Preset) -> some View {
+        let selected = player.soundProfile.preset == preset
+        return Button {
+            guard !selected else { return }
+            app.applySound(.preset(preset), to: player)
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "checkmark")
+                    .foregroundStyle(accent)
+                    .opacity(selected ? 1 : 0)
+                    .frame(width: 16)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(preset.title)
+                    Text(preset.summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .font(.callout)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(selected ? Color.primary.opacity(0.06) : .clear,
+                    in: RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// Plays the original while held down.
+    private var compareButton: some View {
+        Button {} label: {
+            Label(player.isComparingSound ? "Playing Original" : "Hold to Compare",
+                  systemImage: player.isComparingSound ? "ear.fill" : "ear")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in if !player.isComparingSound { player.isComparingSound = true } }
+                .onEnded { _ in player.isComparingSound = false }
+        )
+        .help("Hold to hear the book as recorded")
+        .accessibilityHint("Compare with Original is also in the Playback menu")
+    }
+
+    private var sliders: some View {
+        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
+            sliderRow("Volume", value: \.volumeDB, range: SoundProfile.volumeRange,
+                      text: { String(format: "+%.0f dB", $0) })
+            sliderRow("Clarity", value: \.clarityDB, range: SoundProfile.clarityRange,
+                      text: { String(format: "+%.0f dB", $0) })
+            sliderRow("Noise Reduction", value: \.noiseReduction, range: 0...1,
+                      text: { "\(Int(($0 * 100).rounded()))%" })
+                .disabled(player.soundProfile.preset != .restore)
+        }
+        .font(.callout)
+    }
+
+    private func sliderRow(_ title: String, value: WritableKeyPath<SoundProfile, Double>,
+                           range: ClosedRange<Double>, text: @escaping (Double) -> String) -> some View {
+        GridRow {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Slider(value: Binding(get: { player.soundProfile[keyPath: value] },
+                                  set: { newValue in
+                                      var profile = player.soundProfile
+                                      profile[keyPath: value] = newValue
+                                      app.applySound(profile, to: player)
+                                  }),
+                   in: range)
+                .controlSize(.small)
+                .accessibilityValue(text(player.soundProfile[keyPath: value]))
+            Text(text(player.soundProfile[keyPath: value]))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(width: 48, alignment: .trailing)
+        }
+    }
+}
+
+extension AppState {
+    /// Plays `profile` now and remembers it for the playing book (or its
+    /// series, when the book follows its series' setting).
+    func applySound(_ profile: SoundProfile, to player: PlayerEngine) {
+        player.setSoundProfile(profile)
+        if let item = playingItem, item.id == player.itemID {
+            setSoundProfile(profile, for: item)
+        }
+    }
 }

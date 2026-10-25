@@ -169,6 +169,10 @@ Continuous (squircle) corners everywhere, sized by what they round: `tile` (4pt)
 - **Style:** Apple Podcasts on the Mac: title, a two-line plain excerpt of the notes, then one capsule play pill that carries the time ("39m", "12m left" with a small progress bar, or a green check and "Played"), the date, and a ⋯ menu.
 - **Playing:** the pill turns prominent and shows a small animated equalizer; a single click never starts playback, a double-click does.
 
+### Sound popover
+- **Where:** the Now Playing bar, between the sleep timer and speed; the button wears the cover's accent when a book plays enhanced.
+- **Style:** the same plain rows as the sleep timer — a checkmark, the preset's name and a one-line description — then a bordered Hold to Compare button, a "Use for all of *Series*" checkbox, and a Fine-Tune disclosure of three small sliders with their values in monospaced digits.
+
 ### Lists and tables
 - **Selection:** native `List(selection:)` and `Table(selection:)`; Return or a double-click opens or plays, Delete removes, right-click acts on the whole selection.
 

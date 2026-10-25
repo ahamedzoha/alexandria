@@ -204,6 +204,9 @@ final class AppState {
     var episodeOrders: [String: EpisodeOrder] = [:]
     // Bumped whenever a Sound setting is saved, so views reading them redraw.
     var soundRevision = 0
+    /// The book or show the player last started (for Sound, which is
+    /// remembered per book and per series).
+    var playingItem: LibraryItem?
     // Home's header has scrolled under the toolbar: its compact twin and the
     // level visualizer show in the toolbar.
     var homeHeaderCollapsed = false
@@ -443,6 +446,7 @@ final class AppState {
         fetchedRecentEpisodes = []
         episodeResumes = []
         otherLibraryResumes = []
+        playingItem = nil
         unresolvedResumeRows = []
         itemsByID = [:]
         itemDetailCache = [:]
@@ -1183,6 +1187,7 @@ final class AppState {
     /// refill the automatic part — the show's following unplayed episodes, or
     /// the series' next unfinished books.
     func playbackStarted(item: LibraryItem, episode: PodcastEpisode?) async {
+        playingItem = item
         guard let id = QueueEntry(item: item, episode: episode)?.id else { return }
         if let episode {
             if episodesByItem[item.id] == nil { await loadEpisodes(itemID: item.id, quiet: true) }
