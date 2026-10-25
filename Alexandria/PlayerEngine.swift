@@ -52,6 +52,9 @@ final class PlayerEngine {
         case endOfChapter
     }
     var sleepTimer: SleepTimer = .off
+    /// Uptime of the last sleep-countdown tick; nil until the next tick after
+    /// play, pause or a new timer.
+    @ObservationIgnored private var lastSleepTick: TimeInterval?
 
     private var artwork: MPMediaItemArtwork?
 
@@ -113,10 +116,6 @@ final class PlayerEngine {
 
         trackOffsets = offsets
         trackURLs = urls
-        chapters = (session.chapters ?? []).enumerated().map { i, c in
-            Chapter(id: i, start: c.start ?? 0, end: c.end ?? 0, title: c.title ?? "Chapter \(i + 1)")
-        }
-
         currentTitle = title
         currentAuthor = author
         coverURL = cover
@@ -124,6 +123,7 @@ final class PlayerEngine {
 
         let lastTrackDuration = sorted.last?.duration ?? 0
         duration = session.duration ?? ((offsets.last ?? 0) + lastTrackDuration)
+        chapters = Self.chapters(from: session.chapters ?? [], duration: duration)
         currentTime = min(max(0, session.currentTime ?? 0), max(duration, 0))
 
         let startIndex = indexForTime(currentTime)
@@ -221,7 +221,7 @@ final class PlayerEngine {
                         self.tickCount = 0
                         self.reportNow()
                     }
-                    self.advanceSleepTimer(step: 0.5)
+                    self.advanceSleepTimer()
                 }
             }
         }
@@ -275,16 +275,56 @@ final class PlayerEngine {
     // MARK: Transport
 
     func play() {
-        player?.rate = rate
+        // Nothing loaded (Space on the login screen, a media key): claiming
+        // to play would animate the menu bar icon over silence.
+        guard let player else { return }
+        player.rate = rate
         isPlaying = true
+        lastSleepTick = nil
         updateNowPlayingInfo()
     }
 
     func pause() {
         player?.pause()
         isPlaying = false
+        lastSleepTick = nil
         reportNow()
         updateNowPlayingInfo()
+    }
+
+    /// Unload whatever is playing (logout, server switch): one last position
+    /// report, then the empty state, so the Now Playing bars disappear and no
+    /// later tick reports to a server the item doesn't belong to.
+    func stop() {
+        guard !itemID.isEmpty else { return }
+        reportNow()
+        teardown()
+        itemID = ""
+        currentEpisodeID = nil
+        trackOffsets = []
+        trackURLs = []
+        itemIndexMap = [:]
+        currentIndex = 0
+        chapters = []
+        currentTitle = ""
+        currentAuthor = ""
+        coverURL = nil
+        isPlaying = false
+        currentTime = 0
+        duration = 0
+        sleepTimer = .off
+    }
+
+    /// Server chapters with every `end` filled in: a missing or zero end
+    /// becomes the next chapter's start (the book's end for the last one) —
+    /// otherwise "sleep at end of chapter" fired the moment it was set.
+    nonisolated static func chapters(from raw: [PlaybackInfo.Chapter], duration: Double) -> [Chapter] {
+        raw.enumerated().map { i, c in
+            let start = c.start ?? 0
+            let fallbackEnd = i + 1 < raw.count ? (raw[i + 1].start ?? duration) : duration
+            let end = (c.end ?? 0) > start ? c.end! : fallbackEnd
+            return Chapter(id: i, start: start, end: end, title: c.title ?? "Chapter \(i + 1)")
+        }
     }
 
     private func reportNow() {
@@ -347,11 +387,13 @@ final class PlayerEngine {
 
     func setSleepTimer(minutes: Int) {
         player?.volume = 1
+        lastSleepTick = nil
         sleepTimer = .seconds(Double(minutes * 60))
     }
 
     func setSleepEndOfChapter() {
         player?.volume = 1
+        lastSleepTick = nil
         sleepTimer = .endOfChapter
     }
 
@@ -360,12 +402,18 @@ final class PlayerEngine {
         sleepTimer = .off
     }
 
-    private func advanceSleepTimer(step: Double) {
+    /// Called on every playback tick. Ticks follow the book's timeline —
+    /// twice a second at 1×, four times at 2× — so the countdown runs on
+    /// wall-clock time between ticks; counting ticks made a 30-minute timer
+    /// stop after 15 at 2×. Gaps over a second (a stall) aren't counted.
+    func advanceSleepTimer(now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        let elapsed = lastSleepTick.map { min(max(0, now - $0), 1) } ?? 0
+        lastSleepTick = now
         switch sleepTimer {
         case .off:
             break
         case .seconds(let remaining):
-            let r = remaining - step
+            let r = remaining - elapsed
             if r <= 0 {
                 triggerSleep()
             } else {

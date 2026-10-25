@@ -10,6 +10,14 @@ final class AppState {
         var isFinished: Bool
         var lastUpdate: Double = 0   // epoch ms of the last progress update
         var currentTime: Double?     // seconds, when known
+
+        /// Finished means the last stretch, not a percentage: at most 30
+        /// seconds left, or the final 1% of something shorter than 50
+        /// minutes. A flat 99% marked a 30-hour book done with 18 minutes
+        /// to go, dropping it from Continue Listening mid-listen.
+        static func isFinished(time: Double, duration: Double) -> Bool {
+            duration > 0 && duration - time <= min(30, duration * 0.01)
+        }
     }
 
     // Progress is keyed per item + episode (episodeID nil for book/item-level).
@@ -103,6 +111,10 @@ final class AppState {
     @ObservationIgnored private var itemsByID: [String: LibraryItem] = [:]
     // In-flight server progress write per (item, episode) — see enqueueProgressPatch.
     @ObservationIgnored private var progressPatchTasks: [ProgressKey: Task<Void, Never>] = [:]
+    /// Called just before the active server changes (switch, logout, adding
+    /// another server) so the player can stop while its final position
+    /// report still goes to the server the item belongs to.
+    @ObservationIgnored var onActiveServerWillChange: (() -> Void)?
     // Bumped per loadItems call: only the newest load may land or clear isLoading.
     @ObservationIgnored private var itemsLoadGeneration = 0
     // Background 45s sync loop + app-activation observer (see startSyncLoop).
@@ -274,6 +286,7 @@ final class AppState {
         do {
             let t = try await APIClient(serverURL: cleaned, token: nil)
                 .login(username: username, password: password)
+            if activeServerID != nil { onActiveServerWillChange?() }
             let id = UUID().uuidString
             // Reuse an existing server for the same URL instead of duplicating it.
             if let existing = servers.first(where: { $0.url == cleaned }) {
@@ -293,13 +306,14 @@ final class AppState {
             await loadLibraries()
             return true
         } catch {
-            errorMessage = friendly(error)
+            report(error)
             return false
         }
     }
 
     func switchServer(_ id: String) async {
         guard id != activeServerID, servers.contains(where: { $0.id == id }) else { return }
+        onActiveServerWillChange?()
         activeServerID = id
         persistServers()
         CoverCache.shared.authToken = token
@@ -309,9 +323,16 @@ final class AppState {
     }
 
     func removeServer(_ id: String) {
+        let wasActive = activeServerID == id
+        // Stop first: the final position report needs the token we're about to drop.
+        if wasActive { onActiveServerWillChange?() }
         UserDefaults.standard.removeObject(forKey: tokenKey(id))
         servers.removeAll { $0.id == id }
-        if activeServerID == id { activeServerID = servers.first?.id }
+        downloads.dropPending(serverID: id)
+        persistServers()
+        // Removing a server you aren't using leaves the current view alone.
+        guard wasActive else { return }
+        activeServerID = servers.first?.id
         persistServers()
         CoverCache.shared.authToken = token
         resetLibraryState()
@@ -428,7 +449,7 @@ final class AppState {
             await refreshEpisodeResumes()
         } catch {
             guard activeServerID == server else { return }
-            errorMessage = friendly(error)
+            report(error)
         }
     }
 
@@ -551,7 +572,7 @@ final class AppState {
         guard activeServerID == server, selectedLibraryID == libraryID else { return }
         switch result {
         case .success(let loaded): items = loaded
-        case .failure(let error): errorMessage = friendly(error)
+        case .failure(let error): report(error)
         }
     }
 
@@ -648,17 +669,18 @@ final class AppState {
         do {
             return try await api.play(itemID: itemID, episodeID: episodeID)
         } catch {
-            errorMessage = friendly(error)
+            report(error)
             return nil
         }
     }
 
     func reportProgress(itemID: String, episodeID: String?, time: Double, duration: Double) {
         let fraction = duration > 0 ? min(1, time / duration) : 0
+        let finished = ItemProgress.isFinished(time: time, duration: duration)
         let key = ProgressKey(itemID: itemID, episodeID: episodeID)
         progressByItem[key] =
             ItemProgress(fraction: fraction,
-                         isFinished: fraction >= 0.99,
+                         isFinished: finished,
                          lastUpdate: Date().timeIntervalSince1970 * 1000,
                          currentTime: time)
         downloads.saveProgress(itemID: itemID, episodeID: episodeID, currentTime: time, duration: duration)
@@ -679,19 +701,24 @@ final class AppState {
             Task { await refreshEpisodeResumes() }
         }
 
+        // Bound now, not when the write runs: after a server switch the
+        // position still belongs to (and goes to) the server it came from.
+        let api = self.api
+        let server = activeServerID
         enqueueProgressPatch(for: key) { [weak self] in
             guard let self else { return }
             let sentAt = Date().timeIntervalSince1970 * 1000
             do {
-                try await self.api.patchProgress(itemID: itemID, episodeID: episodeID,
-                                                 currentTime: time, duration: duration,
-                                                 progress: fraction, isFinished: fraction >= 0.99)
+                try await api.patchProgress(itemID: itemID, episodeID: episodeID,
+                                            currentTime: time, duration: duration,
+                                            progress: fraction, isFinished: finished)
                 // This write supersedes anything queued for the key before it.
                 self.downloads.clearPending(itemID: itemID, episodeID: episodeID, queuedBefore: sentAt)
                 await self.flushPendingProgress()
             } catch {
                 guard !Task.isCancelled else { return }   // superseded by a newer write
-                self.downloads.queuePending(itemID: itemID, episodeID: episodeID, currentTime: time, duration: duration)
+                self.downloads.queuePending(itemID: itemID, episodeID: episodeID, currentTime: time,
+                                            duration: duration, serverID: server)
             }
         }
     }
@@ -710,7 +737,7 @@ final class AppState {
     }
 
     func flushPendingProgress() async {
-        await downloads.flushPending(api: api) { [weak self] itemID, episodeID, queuedAt in
+        await downloads.flushPending(api: api, serverID: activeServerID) { [weak self] itemID, episodeID, queuedAt in
             // Newer progress already known — from the server (another device)
             // or a later write from this Mac — makes the queued entry obsolete.
             guard let self else { return false }
@@ -761,9 +788,9 @@ final class AppState {
             // episodesLoadFailed here would show a "Couldn't Load Episodes"
             // retry state for a show the user never opened, off a server blip
             // they never saw.
-            guard !quiet, activeServerID == server else { return }
+            guard !quiet, activeServerID == server, !(error is CancellationError) else { return }
             episodesLoadFailed.insert(itemID)
-            errorMessage = friendly(error)
+            report(error)
         }
     }
 
@@ -884,6 +911,8 @@ final class AppState {
             ItemProgress(fraction: finished ? 1 : 0,
                          isFinished: finished,
                          lastUpdate: Date().timeIntervalSince1970 * 1000)
+        let api = self.api
+        let server = activeServerID
         Task {
             let sentAt = Date().timeIntervalSince1970 * 1000
             do {
@@ -899,7 +928,7 @@ final class AppState {
                 let duration = episodes(for: itemID)?.first(where: { $0.id == episodeID })?.bestDuration ?? 0
                 downloads.queuePending(itemID: itemID, episodeID: episodeID,
                                        currentTime: finished ? duration : 0, duration: duration,
-                                       isFinished: finished)
+                                       isFinished: finished, serverID: server)
             }
         }
     }
@@ -987,6 +1016,13 @@ final class AppState {
 
     func removeDownload(itemID: String, episodeID: String? = nil) {
         downloads.remove(itemID, episodeID: episodeID)
+    }
+
+    /// Surface an error — except a cancellation, which only means the caller
+    /// stopped waiting (a sheet closed, a newer request took over).
+    private func report(_ error: Error) {
+        guard !(error is CancellationError) else { return }
+        errorMessage = friendly(error)
     }
 
     private func friendly(_ error: Error) -> String {

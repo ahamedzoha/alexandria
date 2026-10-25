@@ -30,9 +30,11 @@ struct RootView: View {
             // time == duration position (so the server sees 100%) before
             // firing this; podcasts then advance to the next unfinished
             // episode.
-            player.onFinished = { [weak app, weak player] id, episodeID in
+            // app and player live as long as the process, so strong captures
+            // are fine (the weak ones here only produced compiler warnings).
+            player.onFinished = { id, episodeID in
                 Task { @MainActor in
-                    guard let app, let player, let episodeID, app.autoPlayNextEpisodes else { return }
+                    guard let episodeID, app.autoPlayNextEpisodes else { return }
                     // Cache miss (e.g. quick-play from the Home shelf): load
                     // the show's episode list before looking up the next one.
                     if app.episodes(for: id) == nil { await app.loadEpisodes(itemID: id) }
@@ -41,6 +43,9 @@ struct RootView: View {
                     startPlayback(item: item, episode: next, app: app, player: player)
                 }
             }
+            // Logout / server switch: stop before the server changes, so the
+            // final position lands on the server the item belongs to.
+            app.onActiveServerWillChange = { player.stop() }
             installSpacebarToggle()
             if app.isLoggedIn && app.libraries.isEmpty {
                 await app.loadLibraries()

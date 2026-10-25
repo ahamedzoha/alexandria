@@ -2,6 +2,7 @@ import Foundation
 
 struct APIError: Error, Sendable {
     let message: String
+    var status: Int? = nil   // HTTP status, when the server answered
 }
 
 /// Thin async wrapper over the audiobookshelf REST API.
@@ -56,6 +57,11 @@ struct APIClient: Sendable {
         do {
             (data, resp) = try await URLSession.shared.data(for: req)
         } catch {
+            // A cancelled request (a sheet closed mid-load, a superseded
+            // task) isn't a connection problem — callers ignore it.
+            if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                throw CancellationError()
+            }
             #if DEBUG
             print("[Alexandria] network error for \(req.url?.absoluteString ?? "?"): \(error)")
             #endif
@@ -67,8 +73,8 @@ struct APIClient: Sendable {
             let bodyText = String(data: data, encoding: .utf8)?.prefix(400) ?? ""
             print("[Alexandria] \(req.httpMethod ?? "?") \(req.url?.absoluteString ?? "?") -> \(http.statusCode)\n\(bodyText)")
             #endif
-            if http.statusCode == 401 { throw APIError(message: "Wrong username or password.") }
-            throw APIError(message: "Server returned error \(http.statusCode).")
+            if http.statusCode == 401 { throw APIError(message: "Wrong username or password.", status: 401) }
+            throw APIError(message: "Server returned error \(http.statusCode).", status: http.statusCode)
         }
         return data
     }

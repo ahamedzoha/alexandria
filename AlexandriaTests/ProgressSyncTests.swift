@@ -17,12 +17,12 @@ final class ProgressSyncTests: XCTestCase {
     }
 
     /// Flushes and returns what was sent, as "item|episode@time".
-    private func flush(_ store: DownloadStore,
+    private func flush(_ store: DownloadStore, server: String? = "srv-a",
                        superseded: @escaping (String, String?, Double) -> Bool = { _, _, _ in false },
-                       fail: Bool = false) async -> [String] {
+                       fail: Error? = nil) async -> [String] {
         var sent: [String] = []
-        await store.flushPending(isSuperseded: superseded) { itemID, episodeID, progress in
-            if fail { throw URLError(.notConnectedToInternet) }
+        await store.flushPending(serverID: server, isSuperseded: superseded) { itemID, episodeID, progress in
+            if let fail { throw fail }
             sent.append("\(itemID)|\(episodeID ?? "-")@\(progress.currentTime)")
         }
         return sent
@@ -73,7 +73,7 @@ final class ProgressSyncTests: XCTestCase {
     func testFailedSendKeepsTheEntryQueued() async {
         let store = DownloadStore(baseDir: dir)
         store.queuePending(itemID: "book", currentTime: 100, duration: 3600, now: 1_000)
-        _ = await flush(store, fail: true)
+        _ = await flush(store, fail: URLError(.notConnectedToInternet))
         XCTAssertEqual(store.pending.count, 1)
     }
 
@@ -85,10 +85,49 @@ final class ProgressSyncTests: XCTestCase {
             sends += 1
             try await Task.sleep(for: .milliseconds(50))   // still in flight when the second call arrives
         }
-        async let first: Void = store.flushPending(isSuperseded: { _, _, _ in false }, send: send)
-        async let second: Void = store.flushPending(isSuperseded: { _, _, _ in false }, send: send)
+        async let first: Void = store.flushPending(serverID: nil, isSuperseded: { _, _, _ in false }, send: send)
+        async let second: Void = store.flushPending(serverID: nil, isSuperseded: { _, _, _ in false }, send: send)
         _ = await (first, second)
         XCTAssertEqual(sends, 1)
+    }
+
+    func testEntriesOnlyFlushToTheServerTheyCameFrom() async {
+        let store = DownloadStore(baseDir: dir)
+        store.queuePending(itemID: "mine", currentTime: 10, duration: 3600, serverID: "srv-a", now: 1_000)
+        store.queuePending(itemID: "theirs", currentTime: 20, duration: 3600, serverID: "srv-b", now: 1_000)
+        let sent = await flush(store, server: "srv-a")
+        XCTAssertEqual(sent, ["mine|-@10.0"])
+        XCTAssertNotNil(store.pending["theirs"], "srv-b's entry waits for srv-b")
+    }
+
+    func testRemovingAServerDropsItsQueuedProgress() {
+        let store = DownloadStore(baseDir: dir)
+        store.queuePending(itemID: "mine", currentTime: 10, duration: 3600, serverID: "srv-a", now: 1_000)
+        store.queuePending(itemID: "theirs", currentTime: 20, duration: 3600, serverID: "srv-b", now: 1_000)
+        store.dropPending(serverID: "srv-b")
+        XCTAssertEqual(Array(store.pending.keys), ["mine"])
+    }
+
+    func testNotFoundStopsRetryingForever() async {
+        // Item deleted on the server (or queued against another one): a 404
+        // used to be retried every 45 seconds, indefinitely.
+        let store = DownloadStore(baseDir: dir)
+        store.queuePending(itemID: "gone", currentTime: 10, duration: 3600, serverID: "srv-a", now: 1_000)
+        _ = await flush(store, fail: APIError(message: "Server returned error 404.", status: 404))
+        XCTAssertTrue(store.pending.isEmpty)
+    }
+
+    // MARK: Finished
+
+    func testFinishedMeansTheLastStretchNotNinetyNinePercent() {
+        let thirtyHours = 30.0 * 3600
+        // 99% of 30 hours still leaves 18 minutes.
+        XCTAssertFalse(AppState.ItemProgress.isFinished(time: thirtyHours * 0.99, duration: thirtyHours))
+        XCTAssertTrue(AppState.ItemProgress.isFinished(time: thirtyHours - 25, duration: thirtyHours))
+        // A 2-minute episode: the last 1% (1.2s), not the last 30s.
+        XCTAssertFalse(AppState.ItemProgress.isFinished(time: 100, duration: 120))
+        XCTAssertTrue(AppState.ItemProgress.isFinished(time: 119, duration: 120))
+        XCTAssertFalse(AppState.ItemProgress.isFinished(time: 0, duration: 0))
     }
 
     // MARK: Resume position

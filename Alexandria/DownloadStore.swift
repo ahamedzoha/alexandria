@@ -42,6 +42,9 @@ struct PendingProgress: Codable, Sendable, Equatable {
     // progress from another device — makes this entry obsolete. nil for
     // entries queued before this field existed (always flushed).
     var queuedAt: Double? = nil
+    // The server the progress belongs to; nil for entries from before 0.5.3
+    // (sent to whichever server is active, as before).
+    var serverID: String? = nil
 }
 
 /// Manages offline downloads: audio files on disk, a JSON index, and an
@@ -250,10 +253,19 @@ final class DownloadStore {
     }
 
     func queuePending(itemID: String, episodeID: String? = nil, currentTime: Double, duration: Double,
-                      isFinished: Bool? = nil, now: Double = Date().timeIntervalSince1970 * 1000) {
+                      isFinished: Bool? = nil, serverID: String? = nil,
+                      now: Double = Date().timeIntervalSince1970 * 1000) {
         pending[downloadKey(itemID, episodeID)] = PendingProgress(currentTime: currentTime, duration: duration,
-                                                                  isFinished: isFinished, queuedAt: now)
+                                                                  isFinished: isFinished, queuedAt: now,
+                                                                  serverID: serverID)
         persistPending()
+    }
+
+    /// A removed server's queued progress can never be delivered.
+    func dropPending(serverID: String) {
+        let before = pending.count
+        pending = pending.filter { $0.value.serverID != serverID }
+        if pending.count != before { persistPending() }
     }
 
     /// A write for this key just reached the server, so anything queued before
@@ -268,10 +280,12 @@ final class DownloadStore {
     /// Send queued progress. `isSuperseded(itemID, episodeID, queuedAt)` says
     /// whether newer progress is already known for that key; such entries are
     /// dropped unsent.
-    func flushPending(api: APIClient, isSuperseded: @escaping (String, String?, Double) -> Bool) async {
-        await flushPending(isSuperseded: isSuperseded) { itemID, episodeID, progress in
+    func flushPending(api: APIClient, serverID: String?,
+                      isSuperseded: @escaping (String, String?, Double) -> Bool) async {
+        await flushPending(serverID: serverID, isSuperseded: isSuperseded) { itemID, episodeID, progress in
             let fraction = progress.duration > 0 ? min(1, progress.currentTime / progress.duration) : 0
-            let finished = progress.isFinished ?? (fraction >= 0.99)
+            let finished = progress.isFinished
+                ?? AppState.ItemProgress.isFinished(time: progress.currentTime, duration: progress.duration)
             if progress.duration > 0 {
                 try await api.patchProgress(itemID: itemID, episodeID: episodeID,
                                             currentTime: progress.currentTime, duration: progress.duration,
@@ -286,22 +300,24 @@ final class DownloadStore {
     }
 
     /// The flush itself, with the transport injected (tests record sends).
-    func flushPending(isSuperseded: @escaping (String, String?, Double) -> Bool,
+    /// Only entries for `serverID` (or untagged legacy ones) are sent.
+    func flushPending(serverID: String?, isSuperseded: @escaping (String, String?, Double) -> Bool,
                       send: @escaping (String, String?, PendingProgress) async throws -> Void) async {
         if let running = flushTask {
             await running.value
             return
         }
-        let task = Task { await performFlush(isSuperseded: isSuperseded, send: send) }
+        let task = Task { await performFlush(serverID: serverID, isSuperseded: isSuperseded, send: send) }
         flushTask = task
         await task.value
         flushTask = nil
     }
 
-    private func performFlush(isSuperseded: (String, String?, Double) -> Bool,
+    private func performFlush(serverID: String?, isSuperseded: (String, String?, Double) -> Bool,
                               send: (String, String?, PendingProgress) async throws -> Void) async {
         guard !pending.isEmpty else { return }
         for (key, progress) in pending {
+            if let owner = progress.serverID, owner != serverID { continue }   // another server's
             let (itemID, episodeID) = splitKey(key)
             if let queuedAt = progress.queuedAt, isSuperseded(itemID, episodeID, queuedAt) {
                 pending[key] = nil
@@ -311,6 +327,10 @@ final class DownloadStore {
                 try await send(itemID, episodeID, progress)
                 // Only clear if no newer update was queued while we were sending.
                 if pending[key] == progress { pending[key] = nil }
+            } catch let error as APIError where error.status == 404 {
+                // The item isn't on this server (deleted, or queued against
+                // another one): it can never land, so stop retrying.
+                pending[key] = nil
             } catch {
                 // still offline; keep it queued
             }
