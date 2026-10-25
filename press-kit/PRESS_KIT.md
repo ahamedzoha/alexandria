@@ -53,6 +53,7 @@ language natively — the app requires macOS 26.
 
 - Personal Home page (listening diary, library mosaic, Continue hero, shelves)
 - Podcasts, Up Next queue, Now Playing inspector with ratings
+- Sound: Voice Boost and Restore (on-device voice isolation) for quiet, hissy older recordings
 - Gapless multi-track playback with chapters, ±15/30s, 0.75–3× speed
 - Media keys, Now Playing (artwork), menu-bar mini-player, spacebar control
 - Offline downloads with reconnect sync

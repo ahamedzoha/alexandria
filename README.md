@@ -22,8 +22,28 @@ SwiftUI app for books and podcasts alike, with a personal Home, gapless multi-tr
 playback, an editable Up Next, offline downloads, and deep system integration, designed
 to feel like it shipped with macOS.
 
+## Sound for old narrations
+
+<img src="docs/screenshots/sound.png" width="320" align="right" alt="The Sound popover: Original, Voice Boost and Restore" />
+
+Older recordings — think the classic *Dark Tower* narrations — are often quiet, muffled,
+and full of tape hiss. **Sound** fixes that while you listen:
+
+- **Voice Boost** makes narration louder, steadier, and clearer.
+- **Restore** adds Apple's on-device voice isolation to strip tape hiss and room noise.
+- **Hold to Compare** to hear the original, and **fine-tune** volume, clarity, and noise
+  reduction.
+- Set it once for a book, or for **its whole series**; it's remembered and works offline
+  too.
+
+Everything runs on your Mac with Apple's own audio units. Nothing is uploaded.
+
+<br clear="right"/>
+
 ## Features
 
+- **Sound** — Voice Boost and Restore for quiet, hissy recordings, per book or series
+  (see above).
 - **Personal Home** — a seven-day **listening diary** (the covers of what you played
   each day, here and in your other audiobookshelf apps), your **library as a cover
   mosaic**, one-tap **Continue** for books and episodes from every library, and shelves
