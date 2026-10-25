@@ -17,6 +17,8 @@ final class PlayerEngine {
     private var player: AVQueuePlayer?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
+    private var failureObserver: NSObjectProtocol?
+    @ObservationIgnored private var statusObservations: [NSKeyValueObservation] = []
 
     // Book layout: parallel arrays, one entry per audio track, in play order.
     private var trackOffsets: [Double] = []   // absolute start of each track within the book
@@ -44,6 +46,9 @@ final class PlayerEngine {
     var currentTime: Double = 0   // seconds into the whole book
     var duration: Double = 0      // whole-book duration
     var rate: Float = 1.0
+    /// Set when the audio itself fails (a track 404s, the network drops, an
+    /// unplayable file); MainView shows it once. Nil again after.
+    var playbackError: String?
 
     // Sleep timer
     enum SleepTimer: Equatable {
@@ -108,6 +113,7 @@ final class PlayerEngine {
 
         reportNow()   // flush progress for whatever was playing before
         teardown()
+        playbackError = nil
         self.itemID = itemID
         self.currentEpisodeID = episodeID ?? session.episodeId
         self.authToken = token
@@ -139,6 +145,9 @@ final class PlayerEngine {
         let start = min(max(idx, 0), trackURLs.count - 1)
         currentIndex = start
 
+        // Before creating items: each new item registers a failure watcher,
+        // which removeObservers() would otherwise cancel straight away.
+        removeObservers()
         var items: [AVPlayerItem] = []
         itemIndexMap.removeAll()
         for i in start..<trackURLs.count {
@@ -147,7 +156,6 @@ final class PlayerEngine {
             items.append(item)
         }
 
-        removeObservers()
         let queue = AVQueuePlayer(items: items)
         queue.automaticallyWaitsToMinimizeStalling = true
         player = queue
@@ -159,13 +167,30 @@ final class PlayerEngine {
     /// Remote tracks authenticate with a Bearer header on the asset so the token
     /// stays out of URLs and logs. HLS segment requests inherit these options.
     private func playerItem(for url: URL) -> AVPlayerItem {
-        guard !url.isFileURL, let authToken, !authToken.isEmpty else {
-            return AVPlayerItem(url: url)
+        let item: AVPlayerItem
+        if !url.isFileURL, let authToken, !authToken.isEmpty {
+            let asset = AVURLAsset(url: url, options: [
+                "AVURLAssetHTTPHeaderFieldsKey": ["Authorization": "Bearer \(authToken)"]
+            ])
+            item = AVPlayerItem(asset: asset)
+        } else {
+            item = AVPlayerItem(url: url)
         }
-        let asset = AVURLAsset(url: url, options: [
-            "AVURLAssetHTTPHeaderFieldsKey": ["Authorization": "Bearer \(authToken)"]
-        ])
-        return AVPlayerItem(asset: asset)
+        // A track that can't load used to mean silence and nothing else.
+        statusObservations.append(item.observe(\.status) { [weak self] item, _ in
+            guard item.status == .failed else { return }
+            let reason = item.error?.localizedDescription
+            Task { @MainActor in self?.playbackFailed(reason) }
+        })
+        return item
+    }
+
+    private func playbackFailed(_ reason: String?) {
+        guard !itemID.isEmpty, playbackError == nil else { return }
+        player?.pause()
+        isPlaying = false
+        playbackError = reason ?? "The audio couldn't be played."
+        updateNowPlayingInfo()
     }
 
     private func trackURL(_ content: String, serverURL: String, token: String?) -> URL? {
@@ -244,6 +269,18 @@ final class PlayerEngine {
                 }
             }
         }
+
+        // Mid-play failures (the connection drops partway through a track).
+        failureObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main
+        ) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, let item = note.object as? AVPlayerItem,
+                      self.itemIndexMap[ObjectIdentifier(item)] != nil else { return }
+                let error = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+                self.playbackFailed(error?.localizedDescription)
+            }
+        }
     }
 
     private func removeObservers() {
@@ -251,6 +288,10 @@ final class PlayerEngine {
         timeObserver = nil
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = nil
+        if let failureObserver { NotificationCenter.default.removeObserver(failureObserver) }
+        failureObserver = nil
+        statusObservations.forEach { $0.invalidate() }
+        statusObservations = []
     }
 
     private func teardown() {
@@ -277,6 +318,9 @@ final class PlayerEngine {
     func play() {
         // Nothing loaded (Space on the login screen, a media key): claiming
         // to play would animate the menu bar icon over silence.
+        guard player != nil else { return }
+        // Play at the very end — after the book finished — starts it over.
+        if duration > 0, currentTime >= duration - 1 { seek(to: 0) }
         guard let player else { return }
         player.rate = rate
         isPlaying = true
@@ -339,8 +383,12 @@ final class PlayerEngine {
         let target = min(max(0, seconds), duration)
         let idx = indexForTime(target)
         let within = target - trackOffsets[idx]
+        // Seeking back from the end makes a later finish count again.
+        if target < duration - 1 { didFireFinished = false }
 
-        if idx == currentIndex, let player {
+        // At the natural end the queue has already dropped its last item, so
+        // an in-track seek has nothing to seek; rebuild from the target track.
+        if idx == currentIndex, let player, player.currentItem != nil {
             player.seek(to: cmTime(within))
             currentTime = target
         } else {

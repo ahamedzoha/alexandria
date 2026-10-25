@@ -17,6 +17,16 @@ struct HomeView: View {
         Group {
             if app.isLoading && app.items.isEmpty {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if app.items.isEmpty, let error = app.errorMessage {
+                // Unreachable server: say so, rather than "nothing on your shelf".
+                ContentUnavailableView {
+                    Label("Can't Reach \(app.activeServer?.name ?? "Your Server")", systemImage: "wifi.exclamationmark")
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("Try Again") { Task { await app.loadLibraries() } }
+                        .buttonStyle(.borderedProminent)
+                }
             } else if app.items.isEmpty {
                 HomeEmptyState { Task { await app.loadLibraries() } }
             } else {
@@ -187,7 +197,7 @@ struct HomeEmptyState: View {
 
                 Text("Books you add on your server appear here automatically.")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: 460)
             .padding(.horizontal, Theme.Space.xl)

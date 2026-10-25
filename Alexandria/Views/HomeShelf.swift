@@ -108,7 +108,7 @@ struct ContinueShelf: View {
                     Text(remainingLabel(item: item, progress: progress))
                         .font(.caption)
                         .monospacedDigit()
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

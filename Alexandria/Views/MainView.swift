@@ -51,6 +51,14 @@ struct MainView: View {
                 detailContent
                 NowPlayingBar()
             }
+            .alert("Playback Stopped", isPresented: Binding(
+                get: { player.playbackError != nil },
+                set: { if !$0 { player.playbackError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(player.playbackError ?? "")
+            }
             .inspector(isPresented: $app.showNowPlayingInfo) {
                 NowPlayingInspector()
             }
@@ -121,6 +129,18 @@ struct MainView: View {
         }
         .sheet(isPresented: $showAddServer) {
             LoginView(isSheet: true) { showAddServer = false }
+        }
+        .sheet(isPresented: $app.sessionExpired, onDismiss: { app.reauthSheetClosed() }) {
+            LoginView(isSheet: true, reauthenticating: app.activeServer) { app.sessionExpired = false }
+        }
+        // Failures of things the user asked for: one alert each, then gone.
+        .alert(app.actionError?.title ?? "", isPresented: Binding(
+            get: { app.actionError != nil },
+            set: { if !$0 { app.actionError = nil } }
+        ), presenting: app.actionError) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { failure in
+            Text(failure.message)
         }
         .sheet(item: $searchSelection) { item in
             ItemDetailView(item: item)

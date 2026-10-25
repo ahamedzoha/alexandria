@@ -3,6 +3,9 @@ import Foundation
 struct APIError: Error, Sendable {
     let message: String
     var status: Int? = nil   // HTTP status, when the server answered
+    /// A 401 on an authenticated request: the saved sign-in is no longer
+    /// valid (as opposed to a wrong password at login).
+    var tokenRejected = false
 }
 
 /// Thin async wrapper over the audiobookshelf REST API.
@@ -73,7 +76,13 @@ struct APIClient: Sendable {
             let bodyText = String(data: data, encoding: .utf8)?.prefix(400) ?? ""
             print("[Alexandria] \(req.httpMethod ?? "?") \(req.url?.absoluteString ?? "?") -> \(http.statusCode)\n\(bodyText)")
             #endif
-            if http.statusCode == 401 { throw APIError(message: "Wrong username or password.", status: 401) }
+            if http.statusCode == 401 {
+                if req.value(forHTTPHeaderField: "Authorization") != nil {
+                    throw APIError(message: "Your sign-in has expired. Sign in again to keep listening.",
+                                   status: 401, tokenRejected: true)
+                }
+                throw APIError(message: "Wrong username or password.", status: 401)
+            }
             throw APIError(message: "Server returned error \(http.statusCode).", status: http.statusCode)
         }
         return data

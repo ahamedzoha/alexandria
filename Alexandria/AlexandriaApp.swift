@@ -40,11 +40,13 @@ struct AlexandriaApp: App {
                 Button("Skip Back") { player.skip(-15) }
                     .keyboardShortcut("[", modifiers: .command)
                 Divider()
+                // ⌥⌘, not ⌘: menu equivalents run before the text field, and
+                // ⌘←/⌘→ are its start/end-of-line keys (the search field).
                 Button("Next Chapter") { player.nextChapter() }
-                    .keyboardShortcut(.rightArrow, modifiers: .command)
+                    .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
                     .disabled(player.chapters.isEmpty)
                 Button("Previous Chapter") { player.prevChapter() }
-                    .keyboardShortcut(.leftArrow, modifiers: .command)
+                    .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
                     .disabled(player.chapters.isEmpty)
                 Divider()
                 Button(app.showNowPlayingInfo ? "Hide Info" : "Show Info") {
@@ -69,9 +71,20 @@ struct AlexandriaApp: App {
                 .environment(app)
                 .environment(player)
         } label: {
-            Image(systemName: player.isPlaying ? "waveform" : "headphones")
-                .symbolEffect(.variableColor.iterative, isActive: player.isPlaying)
+            MenuBarIcon(isPlaying: player.isPlaying)
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+/// Menu bar symbol: a waveform that ripples while playing — held still under
+/// Reduce Motion, where a perpetually animating icon is exactly the problem.
+private struct MenuBarIcon: View {
+    let isPlaying: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Image(systemName: isPlaying ? "waveform" : "headphones")
+            .symbolEffect(.variableColor.iterative, isActive: isPlaying && !reduceMotion)
     }
 }

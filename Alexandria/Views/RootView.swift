@@ -4,6 +4,7 @@ import AppKit
 struct RootView: View {
     @Environment(AppState.self) private var app
     @Environment(PlayerEngine.self) private var player
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Process-wide guard: the spacebar monitor must exist exactly once no
     /// matter how many windows create a RootView.
     @MainActor private static var spaceMonitorInstalled = false
@@ -12,15 +13,17 @@ struct RootView: View {
         ZStack {
             if app.isLoggedIn {
                 MainView()
-                    .transition(.scale(scale: 1.02).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .scale(scale: 1.02).combined(with: .opacity))
             } else {
                 LoginView()
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
                     .zIndex(1)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.spring(response: 0.7, dampingFraction: 0.85), value: app.isLoggedIn)
+        // Reduce Motion: a plain crossfade instead of the slide and scale.
+        .animation(reduceMotion ? .easeInOut(duration: 0.25) : .spring(response: 0.7, dampingFraction: 0.85),
+                   value: app.isLoggedIn)
         .task {
             // Persist playback position back to the server.
             player.onProgress = { id, episodeID, time, duration in
@@ -60,6 +63,10 @@ struct RootView: View {
     /// Space toggles play/pause anywhere except while editing text (so the
     /// search field still types spaces). A menu shortcut can't do this because
     /// focused buttons/controls swallow a bare Space key.
+    ///
+    /// Space is left alone when nothing is loaded (the login screen) and when
+    /// Full Keyboard Access is on — there Space presses the focused control,
+    /// and the media Play/Pause key still controls playback.
     private func installSpacebarToggle() {
         guard !Self.spaceMonitorInstalled else { return }
         Self.spaceMonitorInstalled = true
@@ -69,6 +76,8 @@ struct RootView: View {
             }
             let responder = NSApp.keyWindow?.firstResponder
             if responder is NSText || responder is NSTextView { return event }  // typing in a field
+            if NSApp.isFullKeyboardAccessEnabled { return event }
+            if MainActor.assumeIsolated({ player.itemID.isEmpty }) { return event }
             MainActor.assumeIsolated { player.toggle() }
             return nil
         }

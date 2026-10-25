@@ -145,15 +145,20 @@ final class DownloadStore {
 
     // MARK: Download
 
-    func download(item: LibraryItem, episode: PodcastEpisode? = nil, session: PlaybackInfo, serverURL: String, token: String?, coverURL: URL?) async {
+    /// Downloads every track (and the cover) or nothing: a partial download
+    /// is deleted and the error thrown, so a "downloaded" record always plays.
+    func download(item: LibraryItem, episode: PodcastEpisode? = nil, session: PlaybackInfo, serverURL: String, token: String?, coverURL: URL?) async throws {
         let id = item.id
         let episodeID = episode?.id
         let key = downloadKey(id, episodeID)
         guard !isDownloaded(id, episodeID: episodeID), activeDownloads[key] == nil else { return }
         activeDownloads[key] = 0
+        defer { activeDownloads[key] = nil }
 
         let sorted = session.audioTracks.sorted { ($0.index ?? 0) < ($1.index ?? 0) }
-        guard !sorted.isEmpty else { activeDownloads[key] = nil; return }
+        guard !sorted.isEmpty else {
+            throw APIError(message: "The server didn't list any audio files to download.")
+        }
 
         do {
             let dir = trackDir(id, episodeID: episodeID)
@@ -162,7 +167,10 @@ final class DownloadStore {
             var tracks: [DownloadedTrack] = []
             for (i, track) in sorted.enumerated() {
                 guard let content = track.contentUrl,
-                      let url = resolveURL(content, serverURL: serverURL, token: token) else { continue }
+                      let url = resolveURL(content, serverURL: serverURL, token: token) else {
+                    // Skipping it would save a book with a hole in it.
+                    throw APIError(message: "Track \(i + 1) has no downloadable file.")
+                }
                 let ext = url.pathExtension.isEmpty ? "mp3" : url.pathExtension
                 let dest = dir.appendingPathComponent("\(i).\(ext)")
                 let (tmp, response) = try await URLSession.shared.download(from: url)
@@ -190,12 +198,14 @@ final class DownloadStore {
                 }
                 coverRequest = req
             }
-            if let coverRequest, let (data, _) = try? await URLSession.shared.data(for: coverRequest) {
+            // The cover is optional; only a real image response is kept (an
+            // error page saved as the cover used to show as a broken image).
+            if let coverRequest, let (data, response) = try? await URLSession.shared.data(for: coverRequest),
+               (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true {
                 let coverFolder = coverDir()
                 try? FileManager.default.createDirectory(at: coverFolder, withIntermediateDirectories: true)
                 let coverFile = coverFolder.appendingPathComponent("\(id).img")
-                try? data.write(to: coverFile)
-                coverName = "\(id).img"
+                if (try? data.write(to: coverFile)) != nil { coverName = "\(id).img" }
             }
 
             let lastDuration = sorted.last?.duration ?? 0
@@ -220,8 +230,8 @@ final class DownloadStore {
             persist()
         } catch {
             try? FileManager.default.removeItem(at: trackDir(id, episodeID: episodeID))   // clean partial download
+            throw error
         }
-        activeDownloads[key] = nil
     }
 
     func remove(_ itemID: String, episodeID: String? = nil) {

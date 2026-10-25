@@ -238,7 +238,7 @@ struct StatsView: View {
                 .foregroundStyle(.secondary)
             Text("Press play on a book and your hours will chart here.")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 180)
     }
@@ -254,7 +254,7 @@ struct StatsView: View {
             if genres.isEmpty {
                 Text("No genre data.")
                     .font(.callout)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(genres.enumerated()), id: \.offset) { index, genre in
@@ -279,7 +279,7 @@ struct StatsView: View {
             if authors.isEmpty {
                 Text("No author data.")
                     .font(.callout)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(authors.enumerated()), id: \.offset) { index, author in

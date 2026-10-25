@@ -27,26 +27,37 @@ func startPlayback(item: LibraryItem, episode: PodcastEpisode? = nil, app: AppSt
             }
         }
         guard !Task.isCancelled else { onResult?(false); return }
+        let title = episode?.displayTitle ?? item.title
         let local = app.downloads.localSession(for: item.id, episodeID: episode?.id,
                                                serverProgress: app.progress(itemID: item.id, episodeID: episode?.id))
-        let info: PlaybackInfo?
+        let info: PlaybackInfo
         let cover: URL?
         if let local {
             info = local
             cover = app.downloads.localCoverURL(item.id)
         } else {
-            info = await app.playSession(itemID: item.id, episodeID: episode?.id)
+            do {
+                info = try await app.playSession(itemID: item.id, episodeID: episode?.id)
+            } catch {
+                if !Task.isCancelled { app.presentFailure("Couldn't Play “\(title)”", error) }
+                onResult?(false)
+                return
+            }
             cover = app.coverURL(itemID: item.id)
         }
-        guard !Task.isCancelled, let info else {
+        guard !Task.isCancelled else {
             onResult?(false)
             return
         }
         let loaded = player.load(session: info, itemID: item.id, episodeID: episode?.id,
                                  serverURL: app.serverURL, token: app.token,
-                                 title: episode?.displayTitle ?? item.title,
+                                 title: title,
                                  author: episode == nil ? item.author : item.title,
                                  cover: cover)
+        if !loaded {
+            app.presentFailure("Couldn't Play “\(title)”",
+                               APIError(message: "The server didn't offer any audio this app can play."))
+        }
         onResult?(loaded)
     }
 }

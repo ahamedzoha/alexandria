@@ -6,6 +6,9 @@ struct LoginView: View {
     @Environment(\.dismiss) private var dismiss
 
     var isSheet = false
+    /// Sign In Again: the server whose saved sign-in expired. Prefills its
+    /// URL and name, and retitles the sheet.
+    var reauthenticating: AppState.ServerRef? = nil
     var onDone: (() -> Void)?
 
     @State private var name = ""
@@ -15,6 +18,9 @@ struct LoginView: View {
     // Reentrancy guard: Return can fire both a field's .onSubmit and the
     // default button, so gate the async submit to avoid a double addServer.
     @State private var isSubmitting = false
+    // Sign In Again opens on the expiry error already in app.errorMessage;
+    // only errors from this sheet's own attempt belong under its fields.
+    @State private var attempted = false
 
     @FocusState private var focus: Field?
     private enum Field: Hashable { case server, name, username, password }
@@ -91,7 +97,7 @@ struct LoginView: View {
             fieldStack
                 .padding(.horizontal, 24)
 
-            if let error = app.errorMessage {
+            if let error = app.errorMessage, reauthenticating == nil || attempted {
                 errorLabel(error)
                     .padding(.horizontal, 24)
                     .padding(.top, 12)
@@ -108,7 +114,7 @@ struct LoginView: View {
                     .controlSize(.large)
                     .keyboardShortcut(.cancelAction)   // Escape cancels
                 Button(action: connect) {
-                    submitButtonLabel("Add")
+                    submitButtonLabel(reauthenticating == nil ? "Add" : "Sign In")
                         .frame(minWidth: 64)
                 }
                 .buttonStyle(.borderedProminent)
@@ -121,7 +127,15 @@ struct LoginView: View {
         }
         // LoginView owns its sheet size; MainView drops its .frame.
         .frame(minWidth: 460, idealWidth: 480, minHeight: 430)
-        .onAppear { focus = .server }
+        .onAppear {
+            if let server = reauthenticating {
+                self.server = server.url
+                name = server.name
+                focus = .username
+            } else {
+                focus = .server
+            }
+        }
     }
 
     private var sheetHeader: some View {
@@ -131,10 +145,11 @@ struct LoginView: View {
                 .frame(width: 40, height: 40)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Add Server")
+                Text(reauthenticating == nil ? "Add Server" : "Sign In Again")
                     .font(.title2)
                     .fontWeight(.semibold)
-                Text("Connect to another audiobookshelf server")
+                Text(reauthenticating.map { "Your sign-in to \($0.name) has expired." }
+                     ?? "Connect to another audiobookshelf server")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -212,6 +227,7 @@ struct LoginView: View {
     private func connect() {
         guard canConnect, !isSubmitting else { return }
         isSubmitting = true
+        attempted = true
         Task {
             let ok = await app.addServer(name: name, url: server,
                                          username: username, password: password)

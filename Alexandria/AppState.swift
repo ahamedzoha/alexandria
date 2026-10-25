@@ -122,6 +122,20 @@ final class AppState {
     @ObservationIgnored private var didBecomeActiveObserver: (any NSObjectProtocol)?
     var isLoading = false
     var errorMessage: String?
+    /// A failed action the user started (play, download), shown once as an alert.
+    var actionError: ActionFailure?
+    /// The server rejected the saved sign-in; MainView offers Sign In Again.
+    var sessionExpired = false
+    // Cancelled Sign In Again: background syncs stop re-raising it until the
+    // user next tries something themselves.
+    @ObservationIgnored private var reauthDeclined = false
+    @ObservationIgnored private var justSignedIn = false
+
+    struct ActionFailure: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+    }
 
     // Sync (pull progress from the server so other devices reflect quickly)
     var isSyncing = false
@@ -286,10 +300,12 @@ final class AppState {
         do {
             let t = try await APIClient(serverURL: cleaned, token: nil)
                 .login(username: username, password: password)
-            if activeServerID != nil { onActiveServerWillChange?() }
             let id = UUID().uuidString
+            let existing = servers.first(where: { $0.url == cleaned })
+            // Signing in again to the active server keeps what's playing.
+            if let active = activeServerID, active != (existing?.id ?? id) { onActiveServerWillChange?() }
             // Reuse an existing server for the same URL instead of duplicating it.
-            if let existing = servers.first(where: { $0.url == cleaned }) {
+            if let existing {
                 UserDefaults.standard.set(t, forKey: tokenKey(existing.id))
                 activeServerID = existing.id
             } else {
@@ -302,6 +318,9 @@ final class AppState {
             persistServers()
             CoverCache.shared.authToken = token
             resetLibraryState()
+            sessionExpired = false
+            reauthDeclined = false
+            justSignedIn = true
             startSyncLoop()
             await loadLibraries()
             return true
@@ -509,7 +528,15 @@ final class AppState {
 
     func loadProgress() async {
         let server = activeServerID
-        guard let list = try? await api.mediaProgress(), activeServerID == server else { return }
+        let list: [MediaProgress]
+        do {
+            list = try await api.mediaProgress()
+        } catch {
+            // The 45s sync is usually first to notice an expired sign-in.
+            if activeServerID == server { noteAuthFailure(error) }
+            return
+        }
+        guard activeServerID == server else { return }
         var map: [ProgressKey: ItemProgress] = [:]
         for entry in list {
             guard let id = entry.libraryItemId else { continue }
@@ -665,13 +692,8 @@ final class AppState {
         items.filter { $0.author.localizedCaseInsensitiveContains(name) }.count
     }
 
-    func playSession(itemID: String, episodeID: String? = nil) async -> PlaybackInfo? {
-        do {
-            return try await api.play(itemID: itemID, episodeID: episodeID)
-        } catch {
-            report(error)
-            return nil
-        }
+    func playSession(itemID: String, episodeID: String? = nil) async throws -> PlaybackInfo {
+        try await api.play(itemID: itemID, episodeID: episodeID)
     }
 
     func reportProgress(itemID: String, episodeID: String?, time: Double, duration: Double) {
@@ -1003,15 +1025,20 @@ final class AppState {
         let episodeID = episode?.id
         guard !downloads.isDownloaded(item.id, episodeID: episodeID),
               !downloads.isDownloading(item.id, episodeID: episodeID) else { return }
-        guard let session = await playSession(itemID: item.id, episodeID: episodeID) else { return }
-        await downloads.download(
-            item: item,
-            episode: episode,
-            session: session,
-            serverURL: serverURL,
-            token: token,
-            coverURL: coverURL(itemID: item.id)
-        )
+        let title = episode?.displayTitle ?? item.title
+        do {
+            let session = try await playSession(itemID: item.id, episodeID: episodeID)
+            try await downloads.download(
+                item: item,
+                episode: episode,
+                session: session,
+                serverURL: serverURL,
+                token: token,
+                coverURL: coverURL(itemID: item.id)
+            )
+        } catch {
+            presentFailure("Couldn't Download “\(title)”", error)
+        }
     }
 
     func removeDownload(itemID: String, episodeID: String? = nil) {
@@ -1022,7 +1049,33 @@ final class AppState {
     /// stopped waiting (a sheet closed, a newer request took over).
     private func report(_ error: Error) {
         guard !(error is CancellationError) else { return }
+        noteAuthFailure(error)
         errorMessage = friendly(error)
+    }
+
+    /// An action the user started failed: one alert naming what failed —
+    /// or, for an expired sign-in, the Sign In Again sheet instead.
+    func presentFailure(_ title: String, _ error: Error) {
+        guard !(error is CancellationError) else { return }
+        if noteAuthFailure(error, userInitiated: true) { return }
+        actionError = ActionFailure(title: title, message: friendly(error))
+    }
+
+    /// True when `error` means the saved sign-in was rejected; raises
+    /// Sign In Again unless the user just dismissed it (a background sync
+    /// shouldn't nag every 45 seconds; their own next action should).
+    @discardableResult
+    private func noteAuthFailure(_ error: Error, userInitiated: Bool = false) -> Bool {
+        guard (error as? APIError)?.tokenRejected == true, isLoggedIn else { return false }
+        if userInitiated { reauthDeclined = false }
+        if !reauthDeclined { sessionExpired = true }
+        return true
+    }
+
+    /// The Sign In Again sheet closed: cancelled unless sign-in just succeeded.
+    func reauthSheetClosed() {
+        if !justSignedIn { reauthDeclined = true }
+        justSignedIn = false
     }
 
     private func friendly(_ error: Error) -> String {

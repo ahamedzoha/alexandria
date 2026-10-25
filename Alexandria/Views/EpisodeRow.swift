@@ -57,6 +57,9 @@ struct EpisodeRow: View {
                 }
                 Text(episode.displayTitle)
                     .font(.subheadline.weight(.semibold))
+                    // Played episodes recede through the title alone; dimming
+                    // the whole row sank its gray metadata below legible contrast.
+                    .foregroundStyle(isFinished ? HierarchicalShapeStyle.secondary : .primary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                 metaRow
@@ -66,7 +69,6 @@ struct EpisodeRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .opacity(isFinished ? 0.55 : 1)   // played episodes recede
         .accessibilityLabel(accessibilitySummary)
         .accessibilityHint("Plays the episode")
         .accessibilityAction(named: isDownloaded ? "Remove Download" : "Download") { toggleDownload() }

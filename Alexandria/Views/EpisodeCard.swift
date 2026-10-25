@@ -12,6 +12,7 @@ struct EpisodeCard: View {
     /// which carry no shell (episode-list fetches don't include one).
     var show: LibraryItem? = nil
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Owning podcast item when it's already in the loaded library — display
     /// only. Recent-episodes results may reference items outside the library,
@@ -66,7 +67,7 @@ struct EpisodeCard: View {
                         .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1.5))
                         .shadow(radius: 6)
                         .allowsHitTesting(false)
-                        .transition(.scale.combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                 }
             }
             .hoverLift()
@@ -85,7 +86,7 @@ struct EpisodeCard: View {
                 Text(metaLine)
                     .font(.caption)
                     .monospacedDigit()
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -164,7 +165,8 @@ struct EpisodeCard: View {
         guard let itemID = episode.libraryItemId else { return }
         Task {
             guard let resolved = await app.resolveItem(id: itemID) else {
-                app.errorMessage = "Couldn't load the podcast for “\(episode.displayTitle)”."
+                app.presentFailure("Couldn't Play “\(episode.displayTitle)”",
+                                   APIError(message: "Its podcast couldn't be loaded from the server."))
                 return
             }
             startPlayback(item: resolved, episode: episode, app: app, player: player)
@@ -174,7 +176,8 @@ struct EpisodeCard: View {
     private func download(_ itemID: String) {
         Task {
             guard let resolved = await app.resolveItem(id: itemID) else {
-                app.errorMessage = "Couldn't load the podcast for “\(episode.displayTitle)”."
+                app.presentFailure("Couldn't Download “\(episode.displayTitle)”",
+                                   APIError(message: "Its podcast couldn't be loaded from the server."))
                 return
             }
             await app.startDownload(item: resolved, episode: episode)

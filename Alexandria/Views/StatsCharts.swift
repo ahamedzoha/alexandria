@@ -164,7 +164,7 @@ struct ListenRankRow: View {
             HStack(spacing: 12) {
                 Text("\(rank)")
                     .font(.callout.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .frame(width: 22, alignment: .trailing)
                 RoundedRectangle(cornerRadius: 2)
                     .fill(color)

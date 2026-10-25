@@ -72,7 +72,7 @@ struct SearchDropdown: View {
             if !matches.isEmpty {
                 Text("↑↓ navigate · ↵ play · esc clear")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             }
         }
         .foregroundStyle(.secondary)
