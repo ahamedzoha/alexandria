@@ -44,6 +44,7 @@ struct RootView: View {
             // Logout / server switch: stop before the server changes, so the
             // final position lands on the server the item belongs to.
             app.onActiveServerWillChange = { player.stop() }
+            player.onListened = { app.listening.add($0) }
             installSpacebarToggle()
             if app.isLoggedIn && app.libraries.isEmpty {
                 await app.loadLibraries()

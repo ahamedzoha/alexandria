@@ -54,11 +54,8 @@ struct HomeView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.Space.xl + 6) {
                 section(0) {
-                    VStack(alignment: .leading, spacing: Theme.Space.l) {
-                        GreetingHeader()
-                        HomeStatRow()
-                    }
-                    .modifier(CenteredContent(maxWidth: contentMaxWidth))
+                    ListeningHeader()
+                        .modifier(CenteredContent(maxWidth: contentMaxWidth))
                 }
 
                 if let hero = app.heroContinue {
@@ -97,10 +94,12 @@ struct HomeView: View {
             }
             .padding(.vertical, Theme.Space.xl)
         }
-        // Once the greeting + stats have scrolled under the toolbar, their
-        // compact twin (and the visualizer) take over up there.
+        // Once the listening header has scrolled under the toolbar, its
+        // compact twin (and the visualizer) take over up there. The header is
+        // ~170pt tall under 28pt of top padding, so its bottom edge crosses
+        // the toolbar at ~198pt; the twin fades in just before that.
         .onScrollGeometryChange(for: Bool.self) { geo in
-            geo.contentOffset.y + geo.contentInsets.top > 190
+            geo.contentOffset.y + geo.contentInsets.top > 180
         } action: { _, collapsed in
             app.homeHeaderCollapsed = collapsed
         }

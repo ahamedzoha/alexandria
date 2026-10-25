@@ -65,6 +65,11 @@ final class PlayerEngine {
     /// Uptime of the last sleep-countdown tick; nil until the next tick after
     /// play, pause or a new timer.
     @ObservationIgnored private var lastSleepTick: TimeInterval?
+    /// Wall-clock seconds actually played, handed out every few seconds for
+    /// Home's listening week. (Same tick-to-tick timing as the sleep timer.)
+    var onListened: ((Double) -> Void)?
+    @ObservationIgnored private var lastListenTick: TimeInterval?
+    @ObservationIgnored private var unreportedListening: Double = 0
 
     private var artwork: MPMediaItemArtwork?
 
@@ -258,6 +263,7 @@ final class PlayerEngine {
                         self.reportNow()
                     }
                     self.advanceSleepTimer()
+                    self.countListening()
                 }
             }
         }
@@ -345,6 +351,7 @@ final class PlayerEngine {
         isPlaying = false
         levelMeter.reset()
         lastSleepTick = nil
+        flushListening()
         reportNow()
         updateNowPlayingInfo()
     }
@@ -509,6 +516,19 @@ final class PlayerEngine {
         case .itemEnds:
             break
         }
+    }
+
+    private func countListening(now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        unreportedListening += lastListenTick.map { min(max(0, now - $0), 1) } ?? 0
+        lastListenTick = now
+        if unreportedListening >= 5 { flushListening() }
+    }
+
+    private func flushListening() {
+        lastListenTick = nil
+        guard unreportedListening > 0 else { return }
+        onListened?(unreportedListening)
+        unreportedListening = 0
     }
 
     /// The last five seconds before any stop point fade to silence.

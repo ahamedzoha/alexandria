@@ -108,6 +108,10 @@ final class AppState {
     let downloads = DownloadStore()
     /// Up Next: what plays when the current item finishes.
     let queue = PlaybackQueue()
+    /// Seconds played per day in Alexandria (Home's week).
+    let listening = ListeningLog()
+    /// Per-day listening from the server's stats (other clients' sessions).
+    var serverListeningDays: [String: Double] = [:]
     // Items fetched individually via resolveItem (auto-play/next-episode
     // targets that aren't in `items` or `recentItems`), keyed by id.
     @ObservationIgnored private var itemsByID: [String: LibraryItem] = [:]
@@ -415,6 +419,7 @@ final class AppState {
         itemsByID = [:]
         itemDetailCache = [:]
         authorDetailCache = [:]
+        serverListeningDays = [:]
         queue.bind(to: activeServerID)   // this server's saved Up Next
         selectedLibraryID = nil
         searchText = ""
@@ -694,6 +699,12 @@ final class AppState {
         guard activeServerID == server else { return nil }
         authorDetailCache[id] = author
         return author
+    }
+
+    func loadListeningStats() async {
+        let server = activeServerID
+        guard let stats = try? await api.listeningStats(), activeServerID == server else { return }
+        serverListeningDays = stats.days ?? [:]
     }
 
     func loadStats() async {

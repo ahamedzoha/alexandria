@@ -101,6 +101,10 @@ struct APIClient: Sendable {
         return token
     }
 
+    func listeningStats() async throws -> ListeningStats {
+        try await send(try request("api/me/listening-stats"), as: ListeningStats.self)
+    }
+
     func libraries() async throws -> [Library] {
         let req = try request("api/libraries")
         return try await send(req, as: LibrariesResponse.self).libraries

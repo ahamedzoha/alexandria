@@ -226,6 +226,11 @@ struct LibraryStats: Decodable, Sendable {
     }
 }
 
+/// GET /api/me/listening-stats — only the per-day totals are used.
+struct ListeningStats: Decodable, Sendable {
+    let days: [String: Double]?   // "yyyy-MM-dd" → seconds (clients that sync sessions)
+}
+
 // MARK: - Me / progress
 
 struct MeResponse: Decodable, Sendable {
