@@ -46,8 +46,8 @@ struct StatsView: View {
                               items: (stats.largestItems ?? []).sorted { ($0.size ?? 0) > ($1.size ?? 0) },
                               value: { (sizeString($0.size) ?? "") })
                 }
-                .padding(28)
-                .frame(maxWidth: 1150)
+                .padding(Theme.Space.xl)
+                .frame(maxWidth: Theme.contentWidth)
                 .frame(maxWidth: .infinity)
                 .opacity(appear ? 1 : 0)
                 .animation(.easeOut(duration: 0.35), value: appear)
@@ -173,7 +173,7 @@ struct StatsView: View {
     // MARK: Listening hero
 
     private var listeningSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
             HStack(alignment: .firstTextBaseline) {
                 Label("Listening", systemImage: "waveform")
                     .font(.title3.bold())

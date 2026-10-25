@@ -53,7 +53,7 @@ struct SeriesGridView: View {
                             .accessibilityLabel("\(group.name), \(Format.count(group.count, app.mediaNoun))")
                         }
                     }
-                    .padding(28)
+                    .padding(Theme.Space.xl)
                 }
             }
         }
@@ -120,7 +120,7 @@ struct PeopleGridView: View {
     @Environment(AppState.self) private var app
     let kind: AppState.Browse   // .authors or .narrators
 
-    private let columns = [GridItem(.adaptive(minimum: 140, maximum: 180), spacing: 20)]
+    private let columns = [GridItem(.adaptive(minimum: 140, maximum: 180), spacing: Theme.Space.l)]
 
     private struct Person: Identifiable {
         let id: String           // name
@@ -169,7 +169,7 @@ struct PeopleGridView: View {
                             .accessibilityLabel("\(person.name), \(Format.count(person.count, app.mediaNoun))")
                         }
                     }
-                    .padding(28)
+                    .padding(Theme.Space.xl)
                 }
             }
         }

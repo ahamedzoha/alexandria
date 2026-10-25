@@ -123,12 +123,12 @@ struct ItemDetailView: View {
         RemoteImage(url: coverURL) { image in
             image.resizable().aspectRatio(contentMode: .fit)
         } fallback: {
-            RoundedRectangle(cornerRadius: 10).fill(.ultraThinMaterial)
+            RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous).fill(.ultraThinMaterial)
                 .overlay(Image(systemName: "headphones").font(.largeTitle).foregroundStyle(.secondary))
         }
         .frame(width: 150, height: 150)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous).strokeBorder(Theme.hairline))
         .themeShadow(Theme.Shadow.lifted)
     }
 
@@ -264,8 +264,8 @@ struct ItemDetailView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .padding(14)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(Theme.Space.m)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.group, style: .continuous))
         }
     }
 
@@ -316,7 +316,7 @@ struct ItemDetailView: View {
                         .padding(.bottom, 8)
                     }
                 }
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.group, style: .continuous))
             }
 
             if let tracks = detail?.media?.audioFiles {
@@ -338,7 +338,7 @@ struct ItemDetailView: View {
             Spacer()
             Image(systemName: chevron).foregroundStyle(.secondary)
         }
-        .padding(14)
+        .padding(Theme.Space.m)
         .contentShape(Rectangle())
     }
 
@@ -351,8 +351,8 @@ struct ItemDetailView: View {
                 .background(.quaternary, in: Capsule())
             Spacer()
         }
-        .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(Theme.Space.m)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.group, style: .continuous))
     }
 
     private var doneBar: some View {
@@ -364,7 +364,7 @@ struct ItemDetailView: View {
                     .keyboardShortcut(.defaultAction)
                     .controlSize(.large)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, Theme.Space.l)
             .padding(.vertical, 12)
         }
         .background(.bar)

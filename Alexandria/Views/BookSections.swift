@@ -159,7 +159,7 @@ struct ChapterRow: View {
         .font(.callout)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(rowFill, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .background(rowFill, in: RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Chapter \(number), \(title), starts at \(Format.timestamp(start))")

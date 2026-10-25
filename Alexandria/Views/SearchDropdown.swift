@@ -55,9 +55,9 @@ struct SearchDropdown: View {
             }
         }
         .frame(width: 460)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                 .strokeBorder(Theme.hairline, lineWidth: 1)
         )
         .themeShadow(Theme.Shadow.lifted)
@@ -76,7 +76,7 @@ struct SearchDropdown: View {
             }
         }
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 14)
+        .padding(.horizontal, Theme.Space.m)
         .padding(.vertical, 10)
         .background(.quaternary.opacity(0.4))
     }
@@ -101,7 +101,7 @@ struct SearchDropdown: View {
                 Spacer()
                 Image(systemName: "arrow.right")
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, Theme.Space.m)
             .padding(.vertical, 11)
             .contentShape(Rectangle())
         }
@@ -141,7 +141,7 @@ private struct SearchResultRow: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous)
                         .fill(active ? Color.primary.opacity(0.09) : .clear)
                 )
                 .contentShape(Rectangle())
@@ -172,18 +172,18 @@ private struct SearchResultRow: View {
             RemoteImage(url: app.coverURL(itemID: item.id)) { image in
                 image.resizable().aspectRatio(contentMode: .fill)
             } fallback: {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
                     .fill(.quaternary)
                     .overlay(Image(systemName: "book.closed").font(.caption).foregroundStyle(.secondary))
             }
             // Dim the cover under the play button on hover/highlight.
             if active {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
                     .fill(.black.opacity(0.28))
             }
         }
         .frame(width: 38, height: 50)
-        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
     }
 
     // Compact cover-play affordance — the small-space cousin of the grid's.

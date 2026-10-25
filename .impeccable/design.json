@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-25T13:10:00Z",
+  "title": "Design System: Alexandria",
+  "extensions": {
+    "colorMeta": {
+      "lapis": {
+        "role": "primary",
+        "displayName": "Lapis",
+        "canonical": "#3C67D9",
+        "tonalRamp": ["#0F1F4A", "#18306E", "#22438F", "#2E56B4", "#3C67D9", "#6A8BE2", "#A3B6EE", "#DCE4F9"]
+      },
+      "glyph-shade": { "role": "neutral", "displayName": "Glyph Shade", "canonical": "rgba(0, 0, 0, 0.55)" },
+      "glyph-ink": { "role": "neutral", "displayName": "Glyph Ink", "canonical": "#FFFFFF" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Home's greeting only." },
+      "headline": { "displayName": "Headline", "purpose": "Shelf and section titles on Home and Browse." },
+      "title": { "displayName": "Title", "purpose": "Titles under covers." },
+      "body": { "displayName": "Body", "purpose": "Rows, details, show notes." },
+      "label": { "displayName": "Label", "purpose": "Uppercase secondary eyebrows." },
+      "meta": { "displayName": "Meta", "purpose": "Author, duration, time left, dates; monospaced digits." }
+    },
+    "shadows": [
+      { "name": "card", "value": "0 2px 5px rgba(0, 0, 0, 0.10)", "purpose": "Covers and cards at rest." },
+      { "name": "lifted", "value": "0 5px 10px rgba(0, 0, 0, 0.16)", "purpose": "A hovered cover, with a 1.03 scale." }
+    ],
+    "motion": [
+      { "name": "snappy", "value": "SwiftUI .snappy / .smooth(0.35)", "purpose": "State changes: toggles, counts, toolbar capsule." },
+      { "name": "entrance", "value": "SwiftUI .smooth(0.5), once per launch", "purpose": "Home header tiles and shelves arriving." },
+      { "name": "hover", "value": "easeOut 0.15s", "purpose": "Cover lift." },
+      { "name": "reduce-motion", "value": "opacity-only or none", "purpose": "Every animated path under Reduce Motion." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one prominent action on a surface (.borderedProminent, tinted Lapis or the artwork color).",
+      "html": "<button class=\"ds-btn-primary\">Connect</button>",
+      "css": ".ds-btn-primary { font: 500 13px -apple-system, system-ui, sans-serif; color: #fff; background: #3C67D9; border: none; border-radius: 6px; padding: 6px 16px; box-shadow: 0 0.5px 1px rgba(0,0,0,0.25); } .ds-btn-primary:hover { background: #3560cf; } .ds-btn-primary:active { background: #2E56B4; } .ds-btn-primary:focus-visible { outline: 3px solid rgba(60,103,217,0.45); outline-offset: 1px; }"
+    },
+    {
+      "name": "Episode Play Pill",
+      "kind": "button",
+      "refersTo": "episode-play-pill",
+      "description": "The one control on an episode row: plays and carries the time.",
+      "html": "<button class=\"ds-pill\"><svg width=\"9\" height=\"10\" viewBox=\"0 0 9 10\"><path d=\"M0 0 L9 5 L0 10 Z\" fill=\"currentColor\"/></svg>12m left<span class=\"ds-pill-bar\"><span></span></span></button>",
+      "css": ".ds-pill { display: inline-flex; align-items: center; gap: 5px; font: 500 11px -apple-system, system-ui, sans-serif; font-variant-numeric: tabular-nums; color: #3C67D9; background: rgba(0,0,0,0.06); border: none; border-radius: 999px; padding: 3px 10px; } .ds-pill:hover { background: rgba(0,0,0,0.10); } .ds-pill:focus-visible { outline: 3px solid rgba(60,103,217,0.45); } .ds-pill-bar { width: 28px; height: 4px; border-radius: 2px; background: rgba(0,0,0,0.12); overflow: hidden; } .ds-pill-bar span { display: block; width: 40%; height: 100%; background: #3C67D9; }"
+    },
+    {
+      "name": "Cover Card",
+      "kind": "card",
+      "refersTo": "cover-card",
+      "description": "A cover with its progress edge, title and meta; lifts on hover and shows the play glyph.",
+      "html": "<div class=\"ds-cover-card\"><div class=\"ds-cover\"><div class=\"ds-cover-art\"></div><div class=\"ds-edge\"><span></span></div><div class=\"ds-glyph\"><svg width=\"16\" height=\"18\" viewBox=\"0 0 9 10\"><path d=\"M0 0 L9 5 L0 10 Z\" fill=\"#fff\"/></svg></div></div><div class=\"ds-cover-title\">The Gunslinger</div><div class=\"ds-cover-meta\">Stephen King · 7 hr left</div></div>",
+      "css": ".ds-cover-card { width: 150px; font-family: -apple-system, system-ui, sans-serif; } .ds-cover { position: relative; width: 150px; height: 150px; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.10); transition: transform 0.15s ease-out, box-shadow 0.15s ease-out; } .ds-cover-art { position: absolute; inset: 0; background: linear-gradient(160deg, #c8873a, #5a3417); } .ds-edge { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(0,0,0,0.3); } .ds-edge span { display: block; width: 35%; height: 100%; background: #e9b04c; } .ds-glyph { position: absolute; left: 53px; top: 53px; width: 44px; height: 44px; border-radius: 50%; background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.7); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; } .ds-cover-card:hover .ds-cover { transform: scale(1.03); box-shadow: 0 5px 10px rgba(0,0,0,0.16); } .ds-cover-card:hover .ds-glyph { opacity: 1; } .ds-cover-title { margin-top: 8px; font-size: 11px; font-weight: 600; color: rgba(0,0,0,0.85); } .ds-cover-meta { font-size: 10px; color: rgba(0,0,0,0.5); }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "text-field",
+      "description": "Native rounded-border field with a real label above it.",
+      "html": "<label class=\"ds-field\"><span>Server URL</span><input placeholder=\"https://library.example.com\"></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 4px; font-family: -apple-system, system-ui, sans-serif; } .ds-field span { font-size: 11px; color: rgba(0,0,0,0.5); } .ds-field input { font-size: 13px; padding: 4px 6px; border: 1px solid rgba(0,0,0,0.18); border-radius: 5px; background: #fff; } .ds-field input:focus-visible { outline: 3px solid rgba(60,103,217,0.45); border-color: #3C67D9; }"
+    },
+    {
+      "name": "Mosaic Tile",
+      "kind": "custom",
+      "refersTo": "mosaic-tile",
+      "description": "One book in the Home library mosaic: color when finished, an accent line when in progress, grayscale when unread.",
+      "html": "<div class=\"ds-mosaic\"><i class=\"ds-tile ds-done\"></i><i class=\"ds-tile ds-done\"></i><i class=\"ds-tile ds-reading\"></i><i class=\"ds-tile ds-unread\"></i><i class=\"ds-tile ds-unread\"></i></div>",
+      "css": ".ds-mosaic { display: flex; gap: 3px; } .ds-tile { position: relative; width: 22px; height: 22px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1); } .ds-done { background: linear-gradient(135deg, #2b6cb0, #c05621); } .ds-reading { background: linear-gradient(135deg, #2f855a, #744210); } .ds-reading::after { content: ''; position: absolute; left: 0; bottom: 0; width: 60%; height: 2px; background: #3C67D9; } .ds-unread { background: linear-gradient(135deg, #888, #444); opacity: 0.6; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Reading Lamp",
+    "overview": "Alexandria is a calm, native Mac room with one warm light in it, and the light comes from the book. Everything structural is the system's own: the sidebar, the toolbar, the inspector, sheets, list and table selection, buttons and fields, the SF type ramp and semantic colors that follow Light and Dark. Against that quiet, the artwork is allowed to glow: the Continue hero takes a soft wash from the cover it shows and tints its one action with the cover's color, covers make up the Home diary and the library mosaic, and Lapis marks the single thing to do next.",
+    "keyCharacteristics": [
+      "System chrome and native controls first; custom drawing only where the system has no answer (the diary, the mosaic, cover overlays).",
+      "Color comes from the artwork and from one accent, Lapis; everything else is semantic system ink.",
+      "Liquid Glass belongs to the navigation layer only; content sits on materials.",
+      "Covers are the primary material of the interface.",
+      "Every number, label and state is legible at a glance in both appearances."
+    ],
+    "rules": [
+      { "name": "The One Lamp Rule", "body": "A surface has at most one saturated area: the artwork wash or the Lapis action, never decorative color besides.", "section": "colors" },
+      { "name": "The System Ink Rule", "body": "Text, separators and surfaces use semantic system colors so Light, Dark and Increase Contrast work without custom values; never a white- or black-opacity literal for text.", "section": "colors" },
+      { "name": "The System Scale Rule", "body": "Fonts come from Theme.Typography or the SF text styles. A fixed .system(size:) appears only as a token (the greeting and the empty-state symbol) or scaled to a shape it sits in (the cover play glyph).", "section": "typography" },
+      { "name": "The Steady Numbers Rule", "body": "Changing numbers (times, counts, progress) use monospacedDigit() and contentTransition(.numericText()) so they don't jitter.", "section": "typography" },
+      { "name": "The Glass Is Navigation Rule", "body": "navGlass and .glassEffect go on bars and floating controls only; content cards use contentCard() (ultra-thin material and a hairline), never glass.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use the system control for the job before drawing one, and keep its native size and style.",
+      "Do take radii from Theme.Radius, page spacing from Theme.Space, fonts from Theme.Typography or SF text styles.",
+      "Do let the artwork supply color, and keep copy over it in semantic colors.",
+      "Do play entrance motion once per launch, and give every animation a Reduce Motion path.",
+      "Do say \"show\" and \"episode\" in podcast libraries and \"book\" in book libraries."
+    ],
+    "donts": [
+      "Don't use saturated or animated multi-hue gradient backgrounds.",
+      "Don't wrap content in glass cards; glass is for navigation.",
+      "Don't build custom translucent pill text fields or gradient call-to-action buttons.",
+      "Don't set a pointing-hand cursor on cards; Mac apps reserve it for links.",
+      "Don't put information in .tertiary text."
+    ]
+  }
+}

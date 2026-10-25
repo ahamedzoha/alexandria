@@ -192,7 +192,7 @@ private struct ReviewList: View {
     @State private var attempt = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
             switch phase {
             case .loading:
                 ProgressView().controlSize(.small)

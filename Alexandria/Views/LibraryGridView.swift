@@ -77,10 +77,10 @@ struct LibraryGridView: View {
                     RemoteImage(url: app.coverURL(itemID: item.id)) { image in
                         image.resizable().aspectRatio(contentMode: .fill)
                     } fallback: {
-                        RoundedRectangle(cornerRadius: 4).fill(.quaternary)
+                        RoundedRectangle(cornerRadius: Theme.Radius.tile, style: .continuous).fill(.quaternary)
                     }
                     .frame(width: 28, height: 28)
-                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tile, style: .continuous))
                     Text(item.title).lineLimit(1)
                 }
             }

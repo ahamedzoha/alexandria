@@ -3,9 +3,23 @@ import AppKit
 
 /// App-wide design tokens so spacing, radii, and surfaces stay consistent.
 enum Theme {
+    /// Corner radii, smallest to largest. Every rounded rectangle takes one
+    /// of these (continuous corners), chosen by the size of what it rounds.
     enum Radius {
-        static let card: CGFloat = 16
+        /// Chart bars.
+        static let mark: CGFloat = 2
+        /// Thumbnails up to ~32pt: mosaic and diary tiles, table covers.
+        static let tile: CGFloat = 4
+        /// Row thumbnails (36–64pt) and row hover or armed fills.
+        static let row: CGFloat = 6
+        /// Chips, tooltips, small callouts and toggle highlights.
+        static let control: CGFloat = 8
+        /// Covers on cards, grids and sheets; dropdown row highlights.
         static let cover: CGFloat = 10
+        /// Grouped sections inside a sheet or the inspector.
+        static let group: CGFloat = 12
+        /// Cards and floating panels.
+        static let card: CGFloat = 16
         static let pill: CGFloat = 999
     }
     enum Space {
@@ -15,6 +29,9 @@ enum Theme {
         static let l: CGFloat = 20
         static let xl: CGFloat = 28
     }
+    /// Widest a page's content column grows before it centers.
+    static let contentWidth: CGFloat = 1180
+
     /// Semantic hairline for card borders and row separators. Adapts to both
     /// appearances — never a white-opacity literal.
     static let hairline = Color(nsColor: .separatorColor)

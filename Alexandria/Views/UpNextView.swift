@@ -30,7 +30,7 @@ struct UpNextView: View {
             }
             .overlay {
                 // Drop feedback: the whole list outlines in the accent.
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.group, style: .continuous)
                     .strokeBorder(Color.accentColor, lineWidth: 2)
                     .padding(4)
                     .opacity(dropTargeted ? 1 : 0)
@@ -169,10 +169,10 @@ private struct QueueRow: View {
             RemoteImage(url: coverURL) { image in
                 image.resizable().aspectRatio(contentMode: .fill)
             } fallback: {
-                RoundedRectangle(cornerRadius: 5).fill(.quaternary)
+                RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous).fill(.quaternary)
             }
             .frame(width: 36, height: 36)
-            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {

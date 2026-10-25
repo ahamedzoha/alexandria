@@ -93,7 +93,7 @@ struct LoginView: View {
             sheetHeader
                 .padding(.horizontal, 24)
                 .padding(.top, 24)
-                .padding(.bottom, 20)
+                .padding(.bottom, Theme.Space.l)
 
             fieldStack
                 .padding(.horizontal, 24)
@@ -140,7 +140,7 @@ struct LoginView: View {
     }
 
     private var sheetHeader: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: Theme.Space.m) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .frame(width: 40, height: 40)
@@ -161,7 +161,7 @@ struct LoginView: View {
     // MARK: - Shared native fields (real labels + roundedBorder controls)
 
     private var fieldStack: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
             labeledField("Server URL") {
                 TextField("Server URL", text: $server,
                           prompt: Text(verbatim: "https://library.example.com"))

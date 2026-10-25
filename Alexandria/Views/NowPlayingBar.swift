@@ -40,9 +40,9 @@ struct NowPlayingBar: View {
     private var accent: Color { palette?.accent ?? .accentColor }
 
     private var fullBar: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: Theme.Space.m) {
             infoToggle {
-                HStack(spacing: 14) {
+                HStack(spacing: Theme.Space.m) {
                     artwork
                     titleBlock.frame(width: 180, alignment: .leading)
                 }
@@ -90,7 +90,7 @@ struct NowPlayingBar: View {
             content()
                 .padding(4)
                 .background(Color.primary.opacity(app.showNowPlayingInfo ? 0.08 : (infoHover ? 0.05 : 0)),
-                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                 .contentShape(Rectangle())
                 .padding(-4)
         }
@@ -107,10 +107,10 @@ struct NowPlayingBar: View {
         RemoteImage(url: player.coverURL) { image in
             image.resizable().aspectRatio(contentMode: .fill)
         } fallback: {
-            RoundedRectangle(cornerRadius: 4).fill(.quaternary)
+            RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous).fill(.quaternary)
         }
         .frame(width: 44, height: 44)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
     }
 
     private var titleBlock: some View {
@@ -384,7 +384,7 @@ struct SpeedPopover: View {
                 }
             }
         }
-        .padding(14)
+        .padding(Theme.Space.m)
         .frame(width: 300)
     }
 
@@ -470,7 +470,7 @@ struct SleepTimerPopover: View {
                 .buttonStyle(.bordered)
             }
         }
-        .padding(14)
+        .padding(Theme.Space.m)
         .frame(width: 320)
     }
 
@@ -498,7 +498,7 @@ struct SleepTimerPopover: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(armed ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 6))
+        .background(armed ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
         .accessibilityLabel("\(option.title), in \(Self.distance(option.remaining))")
         .accessibilityAddTraits(armed ? .isSelected : [])
     }

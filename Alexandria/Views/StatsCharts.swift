@@ -166,7 +166,7 @@ struct ListenRankRow: View {
                     .font(.callout.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 22, alignment: .trailing)
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: Theme.Radius.mark, style: .continuous)
                     .fill(color)
                     .frame(width: 4, height: 26)
                 VStack(alignment: .leading, spacing: 2) {
@@ -196,7 +196,7 @@ struct ListenRankRow: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(highlighted ? Color.primary.opacity(0.06) : .clear,
-                        in: RoundedRectangle(cornerRadius: 8))
+                        in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -275,7 +275,7 @@ struct ProportionRow: View {
         .padding(.vertical, 7)
         .padding(.horizontal, 4)
         .background(hovering ? Color.primary.opacity(0.06) : .clear,
-                    in: RoundedRectangle(cornerRadius: 8))
+                    in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         .contentShape(Rectangle())
     }
 }

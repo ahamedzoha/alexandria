@@ -122,7 +122,7 @@ private struct ListeningDiary: View {
 
             ZStack(alignment: .leading) {
                 if covers.isEmpty {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Radius.tile, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.15), style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
                         .frame(width: Self.tile, height: Self.tile)
                 }
@@ -156,8 +156,8 @@ private struct ListeningDiary: View {
             Rectangle().fill(.quaternary)
         }
         .frame(width: Self.tile, height: Self.tile)
-        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Theme.hairline))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.tile, style: .continuous).strokeBorder(Theme.hairline))
         .shadow(color: .black.opacity(0.25), radius: 1.5, x: 1, y: 0)
         .onTapGesture { onOpen(id) }
     }
@@ -253,7 +253,7 @@ private struct LibraryMosaic: View {
                         .lineLimit(1)
                         .foregroundStyle(.secondary)
                         .frame(width: Self.tile, height: Self.tile)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: Theme.Radius.tile, style: .continuous))
                         .help("\(more) more books")
                 }
             }
@@ -306,8 +306,8 @@ private struct MosaicTile: View {
                     .scaleEffect(x: max(0.08, fraction), anchor: .leading)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Theme.hairline))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.tile, style: .continuous).strokeBorder(Theme.hairline))
         .scaleEffect(entered ? (hovering && !reduceMotion ? 1.35 : 1) : 0.6)
         .opacity(entered ? 1 : 0)
         .shadow(color: .black.opacity(hovering ? 0.3 : 0), radius: 4, y: 2)

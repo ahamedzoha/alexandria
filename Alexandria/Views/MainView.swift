@@ -266,7 +266,7 @@ struct MainView: View {
         }
         .font(.body)
         .frame(minWidth: 320, idealWidth: 460, maxWidth: 620)
-        .padding(.horizontal, 14)
+        .padding(.horizontal, Theme.Space.m)
         .onChange(of: app.searchText) { highlightedIndex = 0 }
     }
 

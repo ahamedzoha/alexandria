@@ -54,7 +54,7 @@ struct EpisodeListView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 28)
+                    .padding(.vertical, Theme.Space.xl)
             } else if let groups = seasonGroups(visible) {
                 LazyVStack(spacing: 0) {
                     ForEach(groups, id: \.season) { group in

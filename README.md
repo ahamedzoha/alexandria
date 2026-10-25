@@ -18,29 +18,38 @@
 ## Why Alexandria?
 
 Every audiobookshelf client is iOS-first — Alexandria is built for the Mac. A real
-SwiftUI app with a personal Home, gapless multi-track playback, offline downloads, and
-deep system integration, designed to feel like it shipped with macOS.
+SwiftUI app for books and podcasts alike, with a personal Home, gapless multi-track
+playback, an editable Up Next, offline downloads, and deep system integration, designed
+to feel like it shipped with macOS.
 
 ## Features
 
-- **Personal Home** — a time-of-day greeting, a library-completion ring, listening
-  stats, a one-tap **Continue**, and shelves for *Continue Listening*, *Discover*,
-  *Listen Again*, and *Recently Added*.
-- **Gapless playback** — full multi-track books via `AVQueuePlayer` with chapters,
-  ±15/30s skip, 0.75–3× speed, and a scrubber.
+- **Personal Home** — a seven-day **listening diary** (the covers of what you played
+  each day, here and in your other audiobookshelf apps), your **library as a cover
+  mosaic**, one-tap **Continue** for books and episodes from every library, and shelves
+  for *Continue Listening*, *Latest Episodes*, *Discover*, *Listen Again*, and
+  *Recently Added*.
+- **Podcasts** — episode lists in the style of Apple Podcasts, newest- or oldest-first
+  per show, played state, and per-episode downloads.
+- **Up Next** — continues a show episode by episode or a series book by book; add with
+  Play Next / Play Later or drag covers in, reorder, and it's saved per server.
+- **Gapless playback** — multi-track books via `AVQueuePlayer` with chapters,
+  ±15/30s skip, 0.75–3× speed, and a **sleep timer** that knows the end of the chapter,
+  episode, or book.
+- **Now Playing inspector** — details, chapters, and opt-in ratings and reviews from
+  Audible and Open Library, spoilers collapsed.
 - **Controls everywhere** — media keys & Now Playing (with artwork), a **menu-bar
-  mini-player**, and spacebar play/pause.
-- **Offline** — download books for offline listening; progress queues locally and
-  syncs when you reconnect.
-- **Progress sync** — reads/writes `/api/me/progress`, resumes where you left off,
-  and shows finished badges on covers.
-- **Fast search** — a modern results dropdown with keyboard navigation and quick-play,
+  mini-player**, spacebar play/pause, and a live audio visualizer in the toolbar.
+- **Offline** — download books and episodes; progress queues locally and syncs when
+  you reconnect.
+- **In step with your server** — progress, finished state, and listening sessions go
+  back to audiobookshelf, so its stats and your other apps see Alexandria's listening.
+- **Fast search** — a results dropdown with keyboard navigation and quick-play,
   focusable from anywhere with **⌘F**.
-- **Browse & stats** — Authors, Series, Narrators, a full library grid/table with
-  sort & filter, and a Stats dashboard.
-- **Multi-server** — add, switch, and remove servers from the sidebar.
-- **Thoughtful details** — sleep timer, colorful placeholder art, native onboarding,
-  and Reduce-Motion-aware animation throughout.
+- **Browse & stats** — Authors, Series (in reading order), Narrators, a library
+  grid/table with sort & filter, and a Stats dashboard.
+- **Multi-server**, in-app updates (Sparkle), and Reduce-Motion-aware animation
+  throughout.
 
 ## Screenshots
 
@@ -93,7 +102,7 @@ macOS 26 deployment target; Liquid Glass adopted throughout.
 
 ## Roadmap
 
-- [ ] Custom app icon polish · podcast support · Handoff
+- [ ] Handoff
 - [ ] Per-track download progress
 - [ ] Keychain token storage (needs a signing team)
 - [ ] Signed & notarized releases

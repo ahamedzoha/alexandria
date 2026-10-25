@@ -35,9 +35,10 @@ series, and narrator — all designed to feel like it shipped with macOS.
 Self-hosted audiobook fans run [audiobookshelf](https://www.audiobookshelf.org/), but
 every client is iOS-first — there's no true native Mac app. Alexandria fills that gap.
 
-It opens on a **personal Home**: a time-of-day greeting, a library-completion ring,
-your listening stats, a one-tap *Continue*, and edge-to-edge shelves for Continue
-Listening, Discover, Listen Again, and Recently Added. Playback is **gapless across
+It opens on a **personal Home**: a seven-day listening diary drawn from the covers of
+what you played, your library as a cover mosaic, a one-tap *Continue* for books and
+podcast episodes, and edge-to-edge shelves for Continue Listening, Latest Episodes,
+Discover, Listen Again, and Recently Added. Playback is **gapless across
 tracks** with chapter support, variable speed, and a scrubber, and it plugs into the
 system — **media keys, Now Playing with artwork, a menu-bar mini-player**, and spacebar
 play/pause. Books can be **downloaded for offline** listening, with progress that queues
@@ -50,7 +51,8 @@ language natively — the app requires macOS 26.
 
 ## Key features
 
-- Personal Home page (greeting, completion ring, listening stats, Continue hero, shelves)
+- Personal Home page (listening diary, library mosaic, Continue hero, shelves)
+- Podcasts, Up Next queue, Now Playing inspector with ratings
 - Gapless multi-track playback with chapters, ±15/30s, 0.75–3× speed
 - Media keys, Now Playing (artwork), menu-bar mini-player, spacebar control
 - Offline downloads with reconnect sync

@@ -46,10 +46,10 @@ struct MiniPlayerView: View {
             RemoteImage(url: player.coverURL) { image in
                 image.resizable().aspectRatio(contentMode: .fill)
             } fallback: {
-                RoundedRectangle(cornerRadius: 6).fill(.quaternary)
+                RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous).fill(.quaternary)
             }
             .frame(width: 64, height: 64)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(player.currentTitle).font(.headline).lineLimit(2)

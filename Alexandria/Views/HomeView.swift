@@ -172,7 +172,7 @@ struct HomeEmptyState: View {
     var body: some View {
         VStack(spacing: 0) {
             GreetingHeader()
-                .frame(maxWidth: 1180)
+                .frame(maxWidth: Theme.contentWidth)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, Theme.Space.xl)
                 .padding(.top, Theme.Space.xl)
