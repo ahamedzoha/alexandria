@@ -229,6 +229,22 @@ struct LibraryStats: Decodable, Sendable {
 /// GET /api/me/listening-stats — only the per-day totals are used.
 struct ListeningStats: Decodable, Sendable {
     let days: [String: Double]?   // "yyyy-MM-dd" → seconds (clients that sync sessions)
+    let recentSessions: [Session]?
+
+    /// A recent listening session — which book, which day, how long.
+    struct Session: Decodable, Sendable {
+        let libraryItemId: String?
+        let date: String?          // "yyyy-MM-dd"
+        let timeListening: Double?
+        let displayTitle: String?     // the episode's title, for podcasts
+        let mediaMetadata: Media?     // the book's / show's own metadata
+
+        struct Media: Decodable, Sendable { let title: String? }
+
+        /// The library item's own title — the show, not the episode — since
+        /// the diary credits listening to the item.
+        var itemTitle: String? { mediaMetadata?.title ?? displayTitle }
+    }
 }
 
 // MARK: - Me / progress

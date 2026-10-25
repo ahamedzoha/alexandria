@@ -67,7 +67,7 @@ final class PlayerEngine {
     @ObservationIgnored private var lastSleepTick: TimeInterval?
     /// Wall-clock seconds actually played, handed out every few seconds for
     /// Home's listening week. (Same tick-to-tick timing as the sleep timer.)
-    var onListened: ((Double) -> Void)?
+    var onListened: ((Double, String) -> Void)?   // (seconds, itemID)
     @ObservationIgnored private var lastListenTick: TimeInterval?
     @ObservationIgnored private var unreportedListening: Double = 0
 
@@ -124,6 +124,7 @@ final class PlayerEngine {
         guard !urls.isEmpty else { return false }
 
         reportNow()   // flush progress for whatever was playing before
+        flushListening()   // credit the outgoing item before itemID changes
         teardown()
         playbackError = nil
         self.itemID = itemID
@@ -362,6 +363,7 @@ final class PlayerEngine {
     func stop() {
         guard !itemID.isEmpty else { return }
         reportNow()
+        flushListening()
         teardown()
         itemID = ""
         currentEpisodeID = nil
@@ -526,8 +528,8 @@ final class PlayerEngine {
 
     private func flushListening() {
         lastListenTick = nil
-        guard unreportedListening > 0 else { return }
-        onListened?(unreportedListening)
+        guard unreportedListening > 0, !itemID.isEmpty else { return }
+        onListened?(unreportedListening, itemID)
         unreportedListening = 0
     }
 

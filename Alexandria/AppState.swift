@@ -112,6 +112,10 @@ final class AppState {
     let listening = ListeningLog()
     /// Per-day listening from the server's stats (other clients' sessions).
     var serverListeningDays: [String: Double] = [:]
+    /// Day → item → seconds, from the server's recent sessions (which book).
+    var serverListeningItems: [String: [String: Double]] = [:]
+    /// Titles the server's sessions carry, for books outside the loaded library.
+    var serverListeningTitles: [String: String] = [:]
     // Items fetched individually via resolveItem (auto-play/next-episode
     // targets that aren't in `items` or `recentItems`), keyed by id.
     @ObservationIgnored private var itemsByID: [String: LibraryItem] = [:]
@@ -420,6 +424,8 @@ final class AppState {
         itemDetailCache = [:]
         authorDetailCache = [:]
         serverListeningDays = [:]
+        serverListeningItems = [:]
+        serverListeningTitles = [:]
         queue.bind(to: activeServerID)   // this server's saved Up Next
         selectedLibraryID = nil
         searchText = ""
@@ -705,6 +711,15 @@ final class AppState {
         let server = activeServerID
         guard let stats = try? await api.listeningStats(), activeServerID == server else { return }
         serverListeningDays = stats.days ?? [:]
+        var items: [String: [String: Double]] = [:]
+        var titles: [String: String] = [:]
+        for session in stats.recentSessions ?? [] {
+            guard let id = session.libraryItemId, let day = session.date else { continue }
+            items[day, default: [:]][id, default: 0] += session.timeListening ?? 0
+            if let title = session.itemTitle { titles[id] = title }
+        }
+        serverListeningItems = items
+        serverListeningTitles = titles
     }
 
     func loadStats() async {

@@ -1,54 +1,47 @@
 import SwiftUI
 
-/// Home's opening moment: a time-of-day greeting, today's listening folded
-/// into the date line, the last seven days as a small bar chart with a live
-/// readout and streak, and the library-completion ring. Bold through type
-/// scale, real numbers and one authored entrance (bars grow, numerals roll),
-/// not through decoration — the page stays on the plain window background.
+/// Home's opening: the greeting, one editorial line about the week, and a
+/// listening diary — the last seven days, each showing the covers of what
+/// was actually played that day — beside the library mosaic. Both halves are
+/// made of the same material, your books: the left is what you listened to,
+/// the right what you've finished.
 struct ListeningHeader: View {
     @Environment(AppState.self) private var app
-    /// Opens a book's details (a click on its mosaic tile).
-    var onOpen: (LibraryItem) -> Void = { _ in }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Opens a book's details (a click on a cover).
+    var onOpen: (LibraryItem) -> Void = { _ in }
 
-    /// The entrance (bars growing from zero, totals rolling up) plays once per
-    /// launch, like HomeView's own cascade; Home is rebuilt on every return and
-    /// a chart that re-grew each time read as a glitch, not a flourish.
+    /// The entrance plays once per launch, like HomeView's own cascade; Home
+    /// is rebuilt on every return and replaying it read as a glitch.
     @MainActor private static var hasEntered = false
     @State private var entered = ListeningHeader.hasEntered
-    /// Week total the readout currently shows — lags the real total only
-    /// during the first roll-up, otherwise tracks it (animated).
-    @State private var shownWeekSeconds: Double = 0
-    /// The bar under the pointer; the readout switches to that day.
-    @State private var focusedDay: ListeningLog.Day?
 
     var body: some View {
-        // Re-evaluated each minute so the greeting and date flip at midnight
-        // or 5 pm without a playback event having to nudge them.
+        // Re-evaluated each minute so the greeting and date roll over at
+        // midnight or 5 pm without a playback event to nudge them.
         TimelineView(.everyMinute) { context in
             content(now: context.date)
         }
         .task(id: app.activeServerID) { await app.loadListeningStats() }
+        .onAppear {
+            guard !entered else { return }
+            ListeningHeader.hasEntered = true
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.5)) { entered = true }
+        }
     }
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let week = ListeningLog.week(endingAt: now, local: app.listening.days, server: app.serverListeningDays)
-        let weekTotal = week.reduce(0) { $0 + $1.seconds }
-        let streak = ListeningLog.streak(endingAt: now, local: app.listening.days, server: app.serverListeningDays)
-        let today = week.last?.seconds ?? 0
-
+        let week = ListeningLog.week(endingAt: now, local: app.listening.days,
+                                     server: app.serverListeningDays, serverItems: app.serverListeningItems)
         HStack(alignment: .top, spacing: Theme.Space.xl) {
-            VStack(alignment: .leading, spacing: Theme.Space.l) {
-                greeting(now: now, todaySeconds: today)
-                HStack(alignment: .bottom, spacing: Theme.Space.l) {
-                    WeekBars(week: week, entered: entered, focused: $focusedDay)
-                    readout(weekTotal: weekTotal, streak: streak)
+            VStack(alignment: .leading, spacing: Theme.Space.l + 4) {
+                VStack(alignment: .leading, spacing: Theme.Space.s) {
+                    Text(GreetingHeader.greeting(at: now))
+                        .font(.system(size: 34, weight: .bold))
+                    summary(now: now, week: week)
                 }
-                // One VoiceOver stop for the whole chart: hover is the only
-                // per-bar interaction, and it has no accessible equivalent.
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(weekSummary(weekTotal: weekTotal, streak: streak))
+                ListeningDiary(week: week, entered: entered, title: title(for:), onOpen: open)
             }
             Spacer(minLength: Theme.Space.l)
             // Books only: a podcast library's items are shows, which don't
@@ -58,156 +51,138 @@ struct ListeningHeader: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear {
-            guard !entered else {
-                shownWeekSeconds = weekTotal
-                return
-            }
-            ListeningHeader.hasEntered = true
-            // Bars first, then the number catches up a beat later — one read
-            // order, not everything moving at once.
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.5)) { entered = true }
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.9).delay(0.15)) { shownWeekSeconds = weekTotal }
-        }
-        .onChange(of: weekTotal) { _, total in
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.6)) { shownWeekSeconds = total }
-        }
     }
 
-    // MARK: Greeting
+    // MARK: Summary line
 
-    private func greeting(now: Date, todaySeconds: Double) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            HStack(spacing: Theme.Space.m) {
-                Image(systemName: Self.symbol(at: now))
-                    .font(.system(size: 30, weight: .medium))
-                    .symbolRenderingMode(.multicolor)
-                    .symbolEffect(.breathe, isActive: !reduceMotion)
-                    .accessibilityHidden(true)
-                Text(GreetingHeader.greeting(at: now))
-                    .font(.system(size: 34, weight: .bold))
-            }
-            Text(dateLine(now: now, todaySeconds: todaySeconds))
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .contentTransition(.numericText())
-                // Keyed on whole minutes: the sentence only changes when a
-                // minute lands, so every change is a real digit roll.
-                .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: Int(todaySeconds / 60))
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    /// Date and today's total in one sentence — the date earns its place as
-    /// context for the number, instead of sitting above the heading as a label.
-    private func dateLine(now: Date, todaySeconds: Double) -> String {
+    /// "Sunday, 25 October · 37 min this week, mostly Episode 17 · 3 days in a
+    /// row" — the date as context, the numbers and the title in primary ink.
+    private func summary(now: Date, week: [ListeningLog.Day]) -> some View {
         let date = now.formatted(.dateTime.weekday(.wide).month(.wide).day())
-        if let listened = durationString(todaySeconds), todaySeconds >= 60 {
-            return "\(date) · \(listened) listened today"
+        let total = week.reduce(0) { $0 + $1.seconds }
+        let streak = ListeningLog.streak(endingAt: now, local: app.listening.totals, server: app.serverListeningDays)
+        let top = ListeningLog.mostListened(in: week, local: app.listening.days,
+                                            serverItems: app.serverListeningItems).flatMap(title(for:))
+
+        var line: Text
+        if total >= 60, let listened = durationString(total) {
+            line = Text("\(date) · \(Text(listened).foregroundStyle(.primary)) this week")
+            if let top { line = Text("\(line), mostly \(Text(top).italic().foregroundStyle(.primary))") }
+        } else {
+            line = Text("\(date) · \(app.heroContinue != nil ? "Pick up where you left off." : "Find your next listen.")")
         }
-        return "\(date) · \(app.heroContinue != nil ? "Pick up where you left off." : "Find your next listen.")"
+        if streak >= 2 { line = Text("\(line) · \(streak) days in a row") }
+
+        return line
+            .font(.title3)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .contentTransition(.numericText())
+            .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: Int(total / 60))
     }
 
-    /// Mirrors `GreetingHeader.greeting(at:)`'s bands (morning 5–12, afternoon
-    /// 12–17, evening otherwise), split a little finer where the sky changes.
-    static func symbol(at date: Date) -> String {
-        switch Calendar.current.component(.hour, from: date) {
-        case 5..<9: return "sunrise.fill"
-        case 9..<17: return "sun.max.fill"
-        case 17..<21: return "sunset.fill"
-        default: return "moon.stars.fill"
-        }
+    private func title(for id: String) -> String? {
+        app.item(byID: id)?.title ?? app.serverListeningTitles[id]
     }
 
-    // MARK: Readout
-
-    private func readout(weekTotal: Double, streak: Int) -> some View {
-        let seconds = focusedDay?.seconds ?? shownWeekSeconds
-        let caption = focusedDay.map { $0.date.formatted(.dateTime.weekday(.wide)) } ?? "this week"
-        return VStack(alignment: .leading, spacing: 2) {
-            Text(durationString(seconds) ?? "0 min")
-                .font(.title.bold())
-                .monospacedDigit()
-                .contentTransition(.numericText())
-            Text(caption)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .contentTransition(.interpolate)
-            if streak >= 2 {
-                Label {
-                    Text("\(streak)-day streak")
-                } icon: {
-                    // Its own style: a monochrome symbol takes a Label's
-                    // *first* foreground style, which would make it white.
-                    Image(systemName: "flame.fill")
-                        .foregroundStyle(.orange)
-                        // A frozen trigger value means no bounce under Reduce Motion.
-                        .symbolEffect(.bounce, value: reduceMotion ? 0 : streak)
-                }
-                .font(.callout.weight(.medium))
-                .padding(.top, Theme.Space.xs)
-            }
-        }
-        .animation(reduceMotion ? .easeInOut(duration: 0.15) : .smooth(duration: 0.3), value: focusedDay)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: streak >= 2)
-    }
-
-    private func weekSummary(weekTotal: Double, streak: Int) -> String {
-        var text = "This week, \(spokenDuration(weekTotal)) listened"
-        if streak >= 2 { text += "; \(streak)-day streak" }
-        return text
+    private func open(_ id: String) {
+        if let item = app.item(byID: id) { onOpen(item); return }
+        Task { if let item = await app.resolveItem(id: id) { onOpen(item) } }
     }
 }
 
-/// The seven days ending today as capsules, oldest first; today in accent,
-/// the rest quiet. Bars grow in with a short stagger on the first appearance
-/// and today's bar keeps growing as listening accumulates.
-private struct WeekBars: View {
+/// The last seven days as columns: the day, the covers of what was played
+/// (fanned when there were several; an empty slot when nothing was), and the
+/// time. Today's column is marked in the accent and fills in live.
+private struct ListeningDiary: View {
+    @Environment(AppState.self) private var app
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let week: [ListeningLog.Day]
     let entered: Bool
-    @Binding var focused: ListeningLog.Day?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let title: (String) -> String?
+    let onOpen: (String) -> Void
 
-    private let maxHeight: CGFloat = 64
-    private let barWidth: CGFloat = 20
-    /// A zero day still gets a dot, so the week reads as seven days, not gaps.
-    private let dot: CGFloat = 4
+    private static let tile: CGFloat = 22   // the mosaic's tile size
+    private static let fan: CGFloat = 7     // offset between stacked covers
+    private static let maxCovers = 3
 
     var body: some View {
-        let peak = max(week.map(\.seconds).max() ?? 0, 1)
-        HStack(alignment: .bottom, spacing: Theme.Space.s) {
+        HStack(alignment: .top, spacing: Theme.Space.m) {
             ForEach(Array(week.enumerated()), id: \.element.id) { index, day in
-                bar(day, index: index, peak: peak)
+                column(day, isToday: index == week.count - 1, index: index)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilitySummary)
     }
 
-    private func bar(_ day: ListeningLog.Day, index: Int, peak: Double) -> some View {
-        let isToday = index == week.count - 1
-        let isFocused = focused == day
-        let height = entered ? max(dot, maxHeight * CGFloat(day.seconds / peak)) : dot
-        return VStack(spacing: 6) {
-            Capsule()
-                .fill(color(isToday: isToday, isFocused: isFocused))
-                .frame(width: barWidth, height: height)
-                .frame(height: maxHeight, alignment: .bottom)
-                // Stagger only the entrance; later growth (today ticking up
-                // while playing) eases without a delay.
-                .animation(reduceMotion ? nil : .spring(duration: 0.55, bounce: 0.2).delay(Double(index) * 0.05), value: entered)
-                .animation(reduceMotion ? nil : .smooth(duration: 0.6), value: day.seconds)
-            Text(day.date.formatted(.dateTime.weekday(.narrow)))
-                .font(.caption.weight(isToday ? .bold : .regular))
+    private func column(_ day: ListeningLog.Day, isToday: Bool, index: Int) -> some View {
+        let covers = Array(day.itemIDs.prefix(Self.maxCovers))
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(day.date.formatted(.dateTime.weekday(.abbreviated)))
+                .font(.caption.weight(isToday ? .semibold : .regular))
                 .foregroundStyle(isToday ? Color.accentColor : .secondary)
+
+            ZStack(alignment: .leading) {
+                if covers.isEmpty {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.15), style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+                        .frame(width: Self.tile, height: Self.tile)
+                }
+                // Most-listened in front.
+                ForEach(Array(covers.enumerated().reversed()), id: \.element) { depth, id in
+                    cover(id)
+                        .offset(x: CGFloat(depth) * Self.fan)
+                        .zIndex(Double(-depth))
+                }
+            }
+            .frame(width: Self.tile + Self.fan * CGFloat(Self.maxCovers - 1), height: Self.tile, alignment: .leading)
+            .opacity(entered ? 1 : 0)
+            .offset(y: entered || reduceMotion ? 0 : -6)
+            .animation(reduceMotion ? nil : .spring(duration: 0.5, bounce: 0.2).delay(Double(index) * 0.05), value: entered)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: covers)
+
+            Text(compact(day.seconds))
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(day.seconds >= 60 ? .secondary : .tertiary)
+                .contentTransition(.numericText())
+                .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: Int(day.seconds / 60))
         }
-        .contentShape(Rectangle())
-        .onHover { focused = $0 ? day : (focused == day ? nil : focused) }
-        .help("\(day.date.formatted(.dateTime.weekday(.wide))) · \(durationString(day.seconds) ?? "No listening")")
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isFocused)
+        .help(help(for: day))
     }
 
-    private func color(isToday: Bool, isFocused: Bool) -> Color {
-        if isToday { return .accentColor }
-        return .primary.opacity(isFocused ? 0.45 : 0.2)
+    private func cover(_ id: String) -> some View {
+        RemoteImage(url: app.coverURL(itemID: id)) { image in
+            image.resizable().aspectRatio(contentMode: .fill)
+        } fallback: {
+            Rectangle().fill(.quaternary)
+        }
+        .frame(width: Self.tile, height: Self.tile)
+        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Theme.hairline))
+        .shadow(color: .black.opacity(0.25), radius: 1.5, x: 1, y: 0)
+        .onTapGesture { onOpen(id) }
+    }
+
+    /// "34m", "1h 12m", "—".
+    private func compact(_ seconds: Double) -> String {
+        seconds < 60 ? "—" : Format.duration(seconds)
+    }
+
+    private func help(for day: ListeningLog.Day) -> String {
+        let name = day.date.formatted(.dateTime.weekday(.wide))
+        guard day.seconds >= 60 else { return "\(name) · No listening" }
+        let titles = day.itemIDs.compactMap(title).joined(separator: ", ")
+        return "\(name) · \(durationString(day.seconds) ?? "")" + (titles.isEmpty ? "" : " — \(titles)")
+    }
+
+    private var accessibilitySummary: String {
+        let listened = week.filter { $0.seconds >= 60 }
+        guard !listened.isEmpty else { return "No listening in the last seven days" }
+        return "Last seven days: " + listened.map {
+            "\($0.date.formatted(.dateTime.weekday(.wide))) \(spokenDuration($0.seconds))"
+        }.joined(separator: ", ")
     }
 }
 
