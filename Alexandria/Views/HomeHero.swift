@@ -110,6 +110,13 @@ struct HomeHeroCard: View {
 
     private var coverURL: URL? { app.coverURL(itemID: entry.item.id) }
 
+    /// The extracted palette, or the cached one on the very first frame: the
+    /// hero is rebuilt every time Home reappears, and waiting for the async
+    /// lookup flashed the bar and button system blue before the cover's color.
+    private var currentPalette: ArtworkPalette? {
+        palette ?? PaletteStore.shared.cached(for: coverURL)
+    }
+
     // Hero copy is always semantic (`.primary`/`.secondary`), never palette
     // text. `ArtworkPalette` guarantees its text colors against the *solid*
     // artwork background, but the wash is translucent (0.45 → 0.08 in dark),
@@ -122,7 +129,7 @@ struct HomeHeroCard: View {
     /// THE one tinted control: the palette accent, unless its contrast against
     /// the white prominent-button label drops below ~3.0 — then the app accent.
     private var resumeTint: Color {
-        guard let accent = palette?.accent,
+        guard let accent = currentPalette?.accent,
               ArtworkPalette.contrastRatio(accent, .white) >= 3.0 else { return .accentColor }
         return accent
     }
@@ -204,7 +211,7 @@ struct HomeHeroCard: View {
     /// fades to clear — at dark-mode strength it reads as a muddy band against
     /// the bright window background.
     @ViewBuilder private var wash: some View {
-        if let palette {
+        if let palette = currentPalette {
             LinearGradient(
                 colors: colorScheme == .light
                     ? [palette.background.opacity(0.22), .clear]
@@ -217,28 +224,27 @@ struct HomeHeroCard: View {
         }
     }
 
-    /// Thin accent progress line + ticking time-remaining readout.
+    /// Native progress bar + ticking time-remaining readout. A standard
+    /// ProgressView, not a GeometryReader-measured capsule: the measured one
+    /// laid out at zero width whenever Home was rebuilt and grew back into
+    /// place — the bar visibly jumped on every return to Home.
     private var progressStrip: some View {
         VStack(alignment: .leading, spacing: 6) {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.quaternary)
-                    Capsule()
-                        .fill(palette?.accent ?? .accentColor)
-                        .frame(width: max(4, geo.size.width * entry.progress.fraction))
-                }
-            }
-            .frame(height: 4)
+            ProgressView(value: min(max(entry.progress.fraction, 0), 1))
+                .progressViewStyle(.linear)
+                .tint(currentPalette?.accent ?? .accentColor)
+                .accessibilityLabel("Progress")
+                // Animate genuine progress (a sync landing), nothing else.
+                .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: entry.progress.fraction)
             Text(remainingLabel)
                 .font(.caption)
                 .monospacedDigit()
                 .contentTransition(.numericText())
                 .foregroundStyle(.secondary)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: remainingLabel)
         }
         .frame(maxWidth: 420, alignment: .leading)
         .padding(.top, 2)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: remainingLabel)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: entry.progress.fraction)
     }
 
     private var remainingLabel: String {

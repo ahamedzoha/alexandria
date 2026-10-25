@@ -541,7 +541,7 @@ final class AppState {
         for entry in list {
             guard let id = entry.libraryItemId else { continue }
             map[ProgressKey(itemID: id, episodeID: entry.episodeId)] =
-                ItemProgress(fraction: entry.progress ?? 0,
+                ItemProgress(fraction: entry.fraction,
                              isFinished: entry.isFinished ?? false,
                              lastUpdate: entry.lastUpdate ?? 0,
                              currentTime: entry.currentTime)
@@ -797,7 +797,7 @@ final class AppState {
             episodesLoadFailed.remove(itemID)
             for entry in expanded.userMediaProgress ?? [] {
                 let key = ProgressKey(itemID: itemID, episodeID: entry.episodeId)
-                let incoming = ItemProgress(fraction: entry.progress ?? 0,
+                let incoming = ItemProgress(fraction: entry.fraction,
                                             isFinished: entry.isFinished ?? false,
                                             lastUpdate: entry.lastUpdate ?? 0,
                                             currentTime: entry.currentTime)

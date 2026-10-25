@@ -266,7 +266,9 @@ struct CoverCell: View {
                     Rectangle().fill(.black.opacity(0.25))
                     Rectangle()
                         // Artwork-derived pop color; app accent until it lands.
-                        .fill((palette ?? .neutral).accent)
+                        // Cached palette on the first frame: no blue flash when
+                        // a shelf is rebuilt on returning to Home.
+                        .fill((palette ?? PaletteStore.shared.cached(for: coverURL) ?? .neutral).accent)
                         .frame(width: max(3, geo.size.width * progress.fraction))
                 }
             }

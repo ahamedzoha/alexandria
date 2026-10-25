@@ -217,3 +217,26 @@ final class ProgressSyncTests: XCTestCase {
         XCTAssertEqual(all.count, 5)
     }
 }
+
+/// The server's stored `progress` can freeze while `currentTime` keeps
+/// moving (observed live: progress 0.248 across currentTime 437 → 467 of
+/// 1450s), so the fraction comes from the position.
+final class ServerProgressFractionTests: XCTestCase {
+    private func row(_ json: String) throws -> MediaProgress {
+        try JSONDecoder().decode(MediaProgress.self, from: Data(json.utf8))
+    }
+
+    func testFractionFollowsThePositionNotTheStaleField() throws {
+        let stale = try row(#"{ "libraryItemId": "i", "episodeId": "e", "progress": 0.248, "currentTime": 467, "duration": 1450, "isFinished": false, "lastUpdate": 1 }"#)
+        XCTAssertEqual(stale.fraction, 467.0 / 1450.0, accuracy: 0.0001)
+    }
+
+    func testFallsBackToStoredProgressWithoutAPosition() throws {
+        XCTAssertEqual(try row(#"{ "progress": 0.4 }"#).fraction, 0.4)
+        XCTAssertEqual(try row(#"{ "progress": 0.4, "currentTime": 10, "duration": 0 }"#).fraction, 0.4)
+    }
+
+    func testFinishedIsAlwaysComplete() throws {
+        XCTAssertEqual(try row(#"{ "progress": 0.2, "currentTime": 10, "duration": 100, "isFinished": true }"#).fraction, 1)
+    }
+}

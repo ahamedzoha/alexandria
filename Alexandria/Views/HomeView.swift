@@ -9,7 +9,11 @@ struct HomeView: View {
     @Environment(PlayerEngine.self) private var player
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selected: LibraryItem?
-    @State private var appeared = false
+    /// The entrance cascade plays once per launch. Coming back to Home shows
+    /// it settled — replaying it (after four network refreshes, no less)
+    /// made the page rise and shift on every return.
+    @MainActor private static var hasEntered = false
+    @State private var appeared = HomeView.hasEntered
 
     private let contentMaxWidth: CGFloat = 1400
 
@@ -43,7 +47,6 @@ struct HomeView: View {
             await app.loadRecentItems()
             await app.refreshRecentEpisodes()
             await app.refreshEpisodeResumes()
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.5)) { appeared = true }
         }
     }
 
@@ -93,6 +96,11 @@ struct HomeView: View {
                 shelf(6, "Recently Added", "clock.badge.plus", app.recentItems, .all)
             }
             .padding(.vertical, Theme.Space.xl)
+        }
+        .onAppear {
+            guard !appeared else { return }
+            HomeView.hasEntered = true
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.5)) { appeared = true }
         }
     }
 

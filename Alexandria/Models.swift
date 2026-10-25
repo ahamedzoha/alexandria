@@ -236,6 +236,20 @@ struct MediaProgress: Decodable, Sendable {
     let episodeId: String?   // set for podcast episode progress
     let progress: Double?
     let currentTime: Double?  // seconds
+    let duration: Double?     // seconds
     let isFinished: Bool?
     let lastUpdate: Double?   // epoch ms; powers "jump back in" ordering
+
+    /// Completion 0...1, from the position when the server has one. The
+    /// stored `progress` can go stale: after another client (Plappa) set it,
+    /// this server kept updating currentTime on every Alexandria save while
+    /// `progress` stayed frozen — so trusting it snapped Home's bars back to
+    /// that old value on every sync.
+    var fraction: Double {
+        if isFinished == true { return 1 }
+        if let currentTime, let duration, duration > 0 {
+            return min(1, max(0, currentTime / duration))
+        }
+        return progress ?? 0
+    }
 }
