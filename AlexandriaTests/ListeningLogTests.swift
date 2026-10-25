@@ -79,3 +79,21 @@ final class ListeningLogTests: XCTestCase {
         XCTAssertEqual(log.days["2026-10-25"], ["": 180])
     }
 }
+
+/// The server's session shapes, as observed.
+final class ListeningSessionTitleTests: XCTestCase {
+    private func session(_ json: String) throws -> ListeningStats.Session {
+        try JSONDecoder().decode(ListeningStats.Session.self, from: Data(json.utf8))
+    }
+
+    func testPodcastSessionsNeverNameTheShow() throws {
+        // Both title fields carry the episode for a podcast session.
+        let podcast = try session(#"{ "libraryItemId": "show", "date": "2026-10-25", "mediaType": "podcast", "displayTitle": "Episode 17", "mediaMetadata": { "title": "Episode 17" } }"#)
+        XCTAssertNil(podcast.bookTitle, "the diary credits the show, so an episode title must not stand in")
+    }
+
+    func testBookSessionsNameTheBook() throws {
+        let book = try session(#"{ "libraryItemId": "b", "date": "2026-10-25", "mediaType": "book", "displayTitle": "The Gunslinger" }"#)
+        XCTAssertEqual(book.bookTitle, "The Gunslinger")
+    }
+}

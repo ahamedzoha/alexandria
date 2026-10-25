@@ -82,7 +82,7 @@ struct ListeningHeader: View {
     }
 
     private func title(for id: String) -> String? {
-        app.item(byID: id)?.title ?? app.serverListeningTitles[id]
+        app.listeningTitle(for: id)
     }
 
     private func open(_ id: String) {

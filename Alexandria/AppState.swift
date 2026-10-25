@@ -707,6 +707,16 @@ final class AppState {
         return author
     }
 
+    /// A diary entry's title: the loaded library, the shows behind Continue
+    /// Listening episodes, items looked up earlier, then what the server's
+    /// sessions or a lookup supplied.
+    func listeningTitle(for id: String, extra: [String: String]? = nil) -> String? {
+        item(byID: id)?.title
+            ?? itemsByID[id]?.title
+            ?? episodeResumes.first { $0.item.id == id }?.item.title
+            ?? (extra ?? serverListeningTitles)[id]
+    }
+
     func loadListeningStats() async {
         let server = activeServerID
         guard let stats = try? await api.listeningStats(), activeServerID == server else { return }
@@ -716,9 +726,17 @@ final class AppState {
         for session in stats.recentSessions ?? [] {
             guard let id = session.libraryItemId, let day = session.date else { continue }
             items[day, default: [:]][id, default: 0] += session.timeListening ?? 0
-            if let title = session.itemTitle { titles[id] = title }
+            if let title = session.bookTitle { titles[id] = title }
         }
         serverListeningItems = items
+        // Name anything in the diary that's outside the loaded library (a
+        // podcast while a book library is selected): one lookup each, cached.
+        let week = ListeningLog.week(endingAt: .now, local: listening.days,
+                                     server: serverListeningDays, serverItems: items)
+        for id in Set(week.flatMap(\.itemIDs)).prefix(12) where listeningTitle(for: id, extra: titles) == nil {
+            if let item = await resolveItem(id: id), activeServerID == server { titles[id] = item.title }
+        }
+        guard activeServerID == server else { return }
         serverListeningTitles = titles
     }
 

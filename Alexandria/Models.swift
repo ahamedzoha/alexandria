@@ -236,14 +236,14 @@ struct ListeningStats: Decodable, Sendable {
         let libraryItemId: String?
         let date: String?          // "yyyy-MM-dd"
         let timeListening: Double?
-        let displayTitle: String?     // the episode's title, for podcasts
-        let mediaMetadata: Media?     // the book's / show's own metadata
+        let mediaType: String?        // "book" | "podcast"
+        let displayTitle: String?
 
-        struct Media: Decodable, Sendable { let title: String? }
-
-        /// The library item's own title — the show, not the episode — since
-        /// the diary credits listening to the item.
-        var itemTitle: String? { mediaMetadata?.title ?? displayTitle }
+        /// The library item's title — books only. For a podcast session the
+        /// server reports the *episode* title in every title field (observed:
+        /// displayTitle and mediaMetadata.title both "Episode 17"), never the
+        /// show's, and the diary credits listening to the show.
+        var bookTitle: String? { mediaType == "podcast" ? nil : displayTitle }
     }
 }
 
