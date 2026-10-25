@@ -179,6 +179,9 @@ Continuous (squircle) corners everywhere, sized by what they round: `tile` (4pt)
 - **Sidebar:** system sidebar with SF Symbols; libraries are listed with book or antenna symbols.
 - **Toolbar:** Now Playing and Up Next are toggles in the toolbar, as in Music.
 
+### App icon (signature)
+The Pharos of Alexandria in ivory on a Lapis night: square crenellated base, octagonal middle, round top, lantern and finial, standing on a dark island. Its lamp throws light out as fine gold arcs that read as sound, and its reflection breaks on the water. Drawn as vector art by `Scripts/render-icon.swift` on the 824pt macOS tile; macOS 26 adopts it into its own squircle. Change it there, never by editing the PNGs.
+
 ### Listening diary and library mosaic (signature)
 The Home header's two halves are made of covers. The diary is seven day columns, each fanning up to three 22pt covers of what was played that day, with the time beneath and today in Lapis. The mosaic is the library as 22pt tiles at `tile` radius: finished books in full color, in-progress ones with an accent line, unread ones in grayscale; hover names a book and a click opens it. On first appearance per launch the tiles arrive in a diagonal wave, then the read ones color in.
 
