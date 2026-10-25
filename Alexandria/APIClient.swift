@@ -13,6 +13,8 @@ struct APIError: Error, Sendable {
 struct APIClient: Sendable {
     let serverURL: String
     let token: String?
+    /// Tests pass a session whose protocol classes stub the server.
+    var session: URLSession = .shared
 
     // MARK: URL building
 
@@ -58,7 +60,7 @@ struct APIClient: Sendable {
     private func validatedData(for req: URLRequest) async throws -> Data {
         let (data, resp): (Data, URLResponse)
         do {
-            (data, resp) = try await URLSession.shared.data(for: req)
+            (data, resp) = try await session.data(for: req)
         } catch {
             // A cancelled request (a sheet closed mid-load, a superseded
             // task) isn't a connection problem — callers ignore it.

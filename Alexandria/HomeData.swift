@@ -61,9 +61,11 @@ extension AppState {
         }
     }
 
-    /// In-progress books, most-recently-played first.
+    /// In-progress books from every library, most-recently-played first:
+    /// the loaded library's, plus the ones `otherLibraryResumes` looked up.
     var continueListening: [LibraryItem] {
-        items
+        let loaded = Set(items.map(\.id))
+        return (items + otherLibraryResumes.filter { !loaded.contains($0.id) })
             .filter {
                 let p = progress(itemID: $0.id)
                 return (p?.fraction ?? 0) > 0.001 && !(p?.isFinished ?? false)
@@ -122,8 +124,8 @@ extension AppState {
         )
     }
 
-    // Scoped to the loaded library (not global progress) so the counts stay
-    // consistent with the shelves and the completion ring never exceeds 100%.
+    // Scoped to the loaded library (not global progress): these describe the
+    // library on screen — the Home mosaic — and can never exceed its total.
     var finishedCount: Int {
         items.filter { progress(itemID: $0.id)?.isFinished ?? false }.count
     }

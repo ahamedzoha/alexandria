@@ -115,10 +115,11 @@ final class PlayerEngine {
         let sorted = session.audioTracks.sorted { ($0.index ?? 0) < ($1.index ?? 0) }
         var offsets: [Double] = []
         var urls: [URL] = []
-        for track in sorted {
+        let allOffsets = Self.trackOffsets(sorted)
+        for (track, offset) in zip(sorted, allOffsets) {
             guard let content = track.contentUrl,
-                  let url = trackURL(content, serverURL: serverURL, token: token) else { continue }
-            offsets.append(track.startOffset ?? (offsets.last ?? 0))
+                  let url = Self.trackURL(content, serverURL: serverURL, token: token) else { continue }
+            offsets.append(offset)
             urls.append(url)
         }
         guard !urls.isEmpty else { return false }
@@ -143,12 +144,11 @@ final class PlayerEngine {
         // position belonged to the old item.
         if case .at = sleepTimer { sleepTimer = .off; self.player?.volume = 1 }
 
-        let lastTrackDuration = sorted.last?.duration ?? 0
-        duration = session.duration ?? ((offsets.last ?? 0) + lastTrackDuration)
+        duration = session.duration ?? ((allOffsets.last ?? 0) + (sorted.last?.duration ?? 0))
         chapters = Self.chapters(from: session.chapters ?? [], duration: duration)
         currentTime = min(max(0, session.currentTime ?? 0), max(duration, 0))
 
-        let startIndex = indexForTime(currentTime)
+        let startIndex = Self.trackIndex(at: currentTime, offsets: trackOffsets)
         buildQueue(fromIndex: startIndex)
         let within = currentTime - trackOffsets[currentIndex]
         if within > 0.5 { player?.seek(to: cmTime(within)) }
@@ -164,6 +164,10 @@ final class PlayerEngine {
         // Before creating items: each new item registers a failure watcher,
         // which removeObservers() would otherwise cancel straight away.
         removeObservers()
+        // A seek into another track lands here mid-fade: the new player keeps
+        // the sleep timer's volume rather than jumping back to full.
+        let volume = player?.volume ?? 1
+        player?.pause()
         var items: [AVPlayerItem] = []
         itemIndexMap.removeAll()
         for i in start..<trackURLs.count {
@@ -174,6 +178,7 @@ final class PlayerEngine {
 
         let queue = AVQueuePlayer(items: items)
         queue.automaticallyWaitsToMinimizeStalling = true
+        queue.volume = volume
         player = queue
         addObservers()
     }
@@ -210,7 +215,7 @@ final class PlayerEngine {
         updateNowPlayingInfo()
     }
 
-    private func trackURL(_ content: String, serverURL: String, token: String?) -> URL? {
+    nonisolated static func trackURL(_ content: String, serverURL: String, token: String?) -> URL? {
         var absolute = content
         if content.hasPrefix("/") {
             let base = serverURL.hasSuffix("/") ? String(serverURL.dropLast()) : serverURL
@@ -272,10 +277,11 @@ final class PlayerEngine {
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main
         ) { [weak self] note in
+            // Only Sendable facts cross into the main-actor block, not the note.
+            let ended = (note.object as? AVPlayerItem).map(ObjectIdentifier.init)
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if let item = note.object as? AVPlayerItem,
-                   let idx = self.itemIndexMap[ObjectIdentifier(item)],
+                if let ended, let idx = self.itemIndexMap[ended],
                    idx == self.trackURLs.count - 1 {
                     self.isPlaying = false   // reached the natural end
                     if !self.didFireFinished, !self.itemID.isEmpty, self.duration > 0 {
@@ -293,11 +299,11 @@ final class PlayerEngine {
         failureObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main
         ) { [weak self] note in
+            let failed = (note.object as? AVPlayerItem).map(ObjectIdentifier.init)
+            let reason = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error)?.localizedDescription
             MainActor.assumeIsolated {
-                guard let self, let item = note.object as? AVPlayerItem,
-                      self.itemIndexMap[ObjectIdentifier(item)] != nil else { return }
-                let error = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
-                self.playbackFailed(error?.localizedDescription)
+                guard let self, let failed, self.itemIndexMap[failed] != nil else { return }
+                self.playbackFailed(reason)
             }
         }
     }
@@ -322,10 +328,25 @@ final class PlayerEngine {
 
     // MARK: Time helpers
 
-    private func indexForTime(_ time: Double) -> Int {
+    /// The track playing at `time`: the last one starting at or before it.
+    nonisolated static func trackIndex(at time: Double, offsets: [Double]) -> Int {
         var idx = 0
-        for (i, offset) in trackOffsets.enumerated() where offset <= time + 0.001 { idx = i }
+        for (i, offset) in offsets.enumerated() where offset <= time + 0.001 { idx = i }
         return idx
+    }
+
+    /// Where each track starts within the book. The server's `startOffset`
+    /// when it sends one; otherwise the previous track's end — falling back
+    /// to the previous offset alone put two tracks at the same position.
+    nonisolated static func trackOffsets(_ tracks: [PlaybackInfo.AudioTrack]) -> [Double] {
+        var offsets: [Double] = []
+        var end = 0.0
+        for track in tracks {
+            let start = track.startOffset ?? end
+            offsets.append(start)
+            end = start + max(0, track.duration ?? 0)
+        }
+        return offsets
     }
 
     private func cmTime(_ seconds: Double) -> CMTime {
@@ -403,7 +424,7 @@ final class PlayerEngine {
     func seek(to seconds: Double) {
         guard !trackURLs.isEmpty else { return }
         let target = min(max(0, seconds), duration)
-        let idx = indexForTime(target)
+        let idx = Self.trackIndex(at: target, offsets: trackOffsets)
         let within = target - trackOffsets[idx]
         // Seeking back from the end makes a later finish count again.
         if target < duration - 1 { didFireFinished = false }
@@ -552,31 +573,43 @@ final class PlayerEngine {
 
     private func configureCommands(on center: MPRemoteCommandCenter) {
         center.playCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.play() }
+            Self.onMain { self?.play() }
             return .success
         }
         center.pauseCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.pause() }
+            Self.onMain { self?.pause() }
             return .success
         }
         center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.toggle() }
+            Self.onMain { self?.toggle() }
             return .success
         }
         center.skipForwardCommand.preferredIntervals = [30]
         center.skipForwardCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.skip(30) }
+            Self.onMain { self?.skip(30) }
             return .success
         }
         center.skipBackwardCommand.preferredIntervals = [15]
         center.skipBackwardCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.skip(-15) }
+            Self.onMain { self?.skip(-15) }
             return .success
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            MainActor.assumeIsolated { self?.seek(to: event.positionTime) }
+            let position = event.positionTime
+            Self.onMain { self?.seek(to: position) }
             return .success
+        }
+    }
+
+    /// Remote commands arrive on the main thread in practice, but nothing
+    /// promises it, and `assumeIsolated` would crash if one didn't: run
+    /// inline on main, hop to the main actor otherwise.
+    private nonisolated static func onMain(_ work: @escaping @MainActor @Sendable () -> Void) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated(work)
+        } else {
+            Task { @MainActor in work() }
         }
     }
 
@@ -599,6 +632,13 @@ final class PlayerEngine {
         infoCenter.playbackState = isPlaying ? .playing : .paused
     }
 
+    /// Built outside the main actor: MediaPlayer calls the handler on its own
+    /// queue, and a closure formed in main-actor code would claim (and, under
+    /// Swift 6 checking, assert) main-actor isolation.
+    private nonisolated static func artwork(_ image: NSImage) -> MPMediaItemArtwork {
+        MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+    }
+
     private func loadArtwork(_ url: URL?) {
         artwork = nil
         guard let url else { return }
@@ -606,8 +646,7 @@ final class PlayerEngine {
             guard let image = await CoverCache.shared.image(for: url) else { return }
             // A newer load may have swapped the cover while we were fetching.
             guard let self, self.coverURL == url else { return }
-            let art = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-            self.artwork = art
+            self.artwork = Self.artwork(image)
             self.updateNowPlayingInfo()
         }
     }

@@ -31,6 +31,20 @@ final class HomeContinueTests: XCTestCase {
         XCTAssertEqual(candidates.map(\.itemID), ["pod-2", "pod-1"])
     }
 
+    func testBookCandidatesSpanEveryLibrary() {
+        // Book rows from any library, most recent first; episode rows,
+        // finished and untouched books are left to their own surfaces.
+        let map: [AppState.ProgressKey: AppState.ItemProgress] = [
+            .init(itemID: "book-a", episodeID: nil): progress(0.5, at: 100),
+            .init(itemID: "book-b", episodeID: nil): progress(0.1, at: 300),
+            .init(itemID: "book-done", episodeID: nil): progress(1, finished: true, at: 400),
+            .init(itemID: "book-new", episodeID: nil): progress(0, at: 500),
+            .init(itemID: "pod", episodeID: "ep"): progress(0.5, at: 600),
+        ]
+        XCTAssertEqual(AppState.bookResumeCandidates(in: map), ["book-b", "book-a"])
+        XCTAssertEqual(AppState.bookResumeCandidates(in: map, limit: 1), ["book-b"])
+    }
+
     func testCandidatesRespectTheLimit() {
         var map: [AppState.ProgressKey: AppState.ItemProgress] = [:]
         for i in 0..<20 {

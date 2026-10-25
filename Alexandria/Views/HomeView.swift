@@ -46,7 +46,7 @@ struct HomeView: View {
             await app.loadStats()
             await app.loadRecentItems()
             await app.refreshRecentEpisodes()
-            await app.refreshEpisodeResumes()
+            await app.refreshResumes()
         }
     }
 

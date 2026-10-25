@@ -56,9 +56,12 @@ final class AudioLevelMeter: @unchecked Sendable {
 
     /// Attaches a tap to `item`'s audio so its playback feeds this meter.
     /// Asynchronous: the audio track has to load first. Failure just leaves
-    /// the item untapped — the bars stay still, playback is unaffected.
+    /// the item untapped — the bars stay still, playback is unaffected. The
+    /// player item stays on the main actor throughout; only the tap's C
+    /// callbacks run on the audio thread.
+    @MainActor
     func attach(to item: AVPlayerItem) {
-        Task {
+        Task { @MainActor in
             guard let track = try? await item.asset.loadTracks(withMediaType: .audio).first else { return }
             var callbacks = MTAudioProcessingTapCallbacks(
                 version: kMTAudioProcessingTapCallbacksVersion_0,
@@ -88,7 +91,7 @@ final class AudioLevelMeter: @unchecked Sendable {
             parameters.audioTapProcessor = tap
             let mix = AVMutableAudioMix()
             mix.inputParameters = [parameters]
-            await MainActor.run { item.audioMix = mix }
+            item.audioMix = mix
         }
     }
 

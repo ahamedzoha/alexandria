@@ -62,10 +62,12 @@ final class DownloadStore {
     /// write's tail) wait for it instead of sending every entry twice.
     @ObservationIgnored private var flushTask: Task<Void, Never>?
     private let baseDir: URL
+    private let urlSession: URLSession
 
     /// `baseDir` defaults to Application Support/Alexandria; tests pass a
-    /// temporary folder.
-    init(baseDir: URL? = nil) {
+    /// temporary folder, and a session that stubs the server.
+    init(baseDir: URL? = nil, session: URLSession = .shared) {
+        self.urlSession = session
         self.baseDir = baseDir ?? FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Alexandria", isDirectory: true)
@@ -165,6 +167,7 @@ final class DownloadStore {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
             var tracks: [DownloadedTrack] = []
+            let offsets = PlayerEngine.trackOffsets(sorted)
             for (i, track) in sorted.enumerated() {
                 guard let content = track.contentUrl,
                       let request = trackRequest(content, serverURL: serverURL, token: token),
@@ -174,7 +177,7 @@ final class DownloadStore {
                 }
                 let ext = url.pathExtension.isEmpty ? "mp3" : url.pathExtension
                 let dest = dir.appendingPathComponent("\(i).\(ext)")
-                let (tmp, response) = try await URLSession.shared.download(for: request)
+                let (tmp, response) = try await urlSession.download(for: request)
                 if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                     throw APIError(message: "Server returned error \(http.statusCode) for track \(i + 1).")
                 }
@@ -184,7 +187,7 @@ final class DownloadStore {
                 try FileManager.default.moveItem(at: tmp, to: dest)
                 tracks.append(DownloadedTrack(
                     fileName: "\(i).\(ext)",
-                    startOffset: track.startOffset ?? 0,
+                    startOffset: offsets[i],
                     duration: track.duration ?? 0
                 ))
                 activeDownloads[key] = Double(i + 1) / Double(sorted.count)
@@ -201,7 +204,7 @@ final class DownloadStore {
             }
             // The cover is optional; only a real image response is kept (an
             // error page saved as the cover used to show as a broken image).
-            if let coverRequest, let (data, response) = try? await URLSession.shared.data(for: coverRequest),
+            if let coverRequest, let (data, response) = try? await urlSession.data(for: coverRequest),
                (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true {
                 let coverFolder = coverDir()
                 try? FileManager.default.createDirectory(at: coverFolder, withIntermediateDirectories: true)

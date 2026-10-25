@@ -44,6 +44,78 @@ final class PlayerEngineTests: XCTestCase {
         XCTAssertEqual(PlayerEngine.chapters(from: [.init(start: 0, end: nil, title: "Only")], duration: 900).first?.end, 900)
     }
 
+    // MARK: Track layout
+
+    private func track(_ index: Int, start: Double?, duration: Double?) -> PlaybackInfo.AudioTrack {
+        PlaybackInfo.AudioTrack(index: index, startOffset: start, duration: duration, title: nil,
+                                contentUrl: "/api/items/b/file/\(index)", mimeType: nil)
+    }
+
+    func testTrackOffsetsUseTheServersWhenSent() {
+        let tracks = [track(0, start: 0, duration: 100), track(1, start: 100, duration: 50)]
+        XCTAssertEqual(PlayerEngine.trackOffsets(tracks), [0, 100])
+    }
+
+    func testAMissingOffsetStartsWhereThePreviousTrackEnds() {
+        // Falling back to the previous offset alone put tracks 2 and 3 at 100.
+        let tracks = [track(0, start: 0, duration: 100), track(1, start: 100, duration: 50),
+                      track(2, start: nil, duration: 75), track(3, start: nil, duration: nil)]
+        XCTAssertEqual(PlayerEngine.trackOffsets(tracks), [0, 100, 150, 225])
+    }
+
+    func testTrackIndexIsTheLastTrackStartingAtOrBeforeTheTime() {
+        let offsets: [Double] = [0, 100, 150]
+        XCTAssertEqual(PlayerEngine.trackIndex(at: 0, offsets: offsets), 0)
+        XCTAssertEqual(PlayerEngine.trackIndex(at: 99.9, offsets: offsets), 0)
+        XCTAssertEqual(PlayerEngine.trackIndex(at: 100, offsets: offsets), 1)
+        XCTAssertEqual(PlayerEngine.trackIndex(at: 5_000, offsets: offsets), 2)
+    }
+
+    // MARK: Track URLs
+
+    func testRelativeTracksJoinTheServerWithoutATokenInTheURL() {
+        let url = PlayerEngine.trackURL("/api/items/b/file/1", serverURL: "https://abs.example/", token: "secret")
+        XCTAssertEqual(url?.absoluteString, "https://abs.example/api/items/b/file/1")
+    }
+
+    func testHLSTracksCarryTheTokenOnce() {
+        let url = PlayerEngine.trackURL("/hls/s1/output.m3u8", serverURL: "https://abs.example", token: "secret")
+        XCTAssertEqual(url?.absoluteString, "https://abs.example/hls/s1/output.m3u8?token=secret")
+        let again = PlayerEngine.trackURL("/hls/s1/output.m3u8?token=secret", serverURL: "https://abs.example",
+                                          token: "secret")
+        XCTAssertEqual(again?.absoluteString, "https://abs.example/hls/s1/output.m3u8?token=secret")
+    }
+
+    func testHLSIsRecognisedBehindASubpathProxy() {
+        // The server lives at /abs; content paths are relative to it.
+        let url = PlayerEngine.trackURL("/hls/s1/output.m3u8", serverURL: "https://host.example/abs/",
+                                        token: "secret")
+        XCTAssertEqual(url?.absoluteString, "https://host.example/abs/hls/s1/output.m3u8?token=secret")
+        let file = PlayerEngine.trackURL("/api/items/b/file/1", serverURL: "https://host.example/abs",
+                                         token: "secret")
+        XCTAssertEqual(file?.absoluteString, "https://host.example/abs/api/items/b/file/1")
+    }
+
+    func testLocalFilesPassThrough() {
+        let url = PlayerEngine.trackURL("file:///tmp/0.mp3", serverURL: "https://abs.example", token: "secret")
+        XCTAssertEqual(url?.absoluteString, "file:///tmp/0.mp3")
+    }
+
+    // MARK: Chapters
+
+    func testTheChapterUnderThePlayheadIncludesTheHalfSecondBeforeIt() {
+        let player = PlayerEngine()
+        player.chapters = PlayerEngine.chapters(from: [.init(start: 0, end: 600, title: "One"),
+                                                       .init(start: 600, end: 1200, title: "Two")],
+                                                duration: 1200)
+        player.currentTime = 300
+        XCTAssertEqual(player.currentChapterIndex, 0)
+        player.currentTime = 599.6   // a seek to 600 can land a hair early
+        XCTAssertEqual(player.currentChapterTitle, "Two")
+        player.currentTime = 1199
+        XCTAssertEqual(player.currentChapterIndex, 1)
+    }
+
     func testPlayWithNothingLoadedStaysStopped() {
         let player = PlayerEngine()
         player.play()

@@ -91,11 +91,15 @@ final class AppState {
     // HomeData's `recentEpisodes` filters these for the Home shelf.
     var fetchedRecentEpisodes: [PodcastEpisode] = []
     // In-progress podcast episodes resolved to (episode, show) pairs, most
-    // recently played first. Rebuilt by refreshEpisodeResumes(); consumers
+    // recently played first. Rebuilt by refreshResumes(); consumers
     // re-derive progress/ordering live from `progressByItem`, so entries here
     // can't go stale between refreshes — only appear/disappear.
     var episodeResumes: [EpisodeResume] = []
-    // Collapses overlapping refreshEpisodeResumes calls (sync loop + playback
+    // In-progress books outside the loaded library (another book library, or
+    // books while a podcast library is selected), so Continue Listening spans
+    // every library the way episodes already do. Rebuilt by refreshResumes().
+    var otherLibraryResumes: [LibraryItem] = []
+    // Collapses overlapping refreshResumes calls (sync loop + playback
     // ticks): one pass runs at a time, and a call arriving mid-pass queues
     // exactly one follow-up pass so fresher progress is never dropped.
     @ObservationIgnored private var episodeResumeRefreshInFlight = false
@@ -280,13 +284,12 @@ final class AppState {
             // Podcasts have no item-level progress row — a show is in
             // progress when any of its episodes is. Keeps the Continue
             // shelf's See All destination from landing on an empty page.
+            // One pass over progress, not one per show.
+            let showsInProgress = Set(progressByItem.compactMap { key, p in
+                key.episodeID != nil && p.fraction > 0.001 && !p.isFinished ? key.itemID : nil
+            })
             result = result.filter { item in
-                if item.isPodcast {
-                    return progressByItem.contains { key, p in
-                        key.itemID == item.id && key.episodeID != nil
-                            && p.fraction > 0.001 && !p.isFinished
-                    }
-                }
+                if item.isPodcast { return showsInProgress.contains(item.id) }
                 let p = progress(itemID: item.id)
                 return (p?.fraction ?? 0) > 0.001 && !(p?.isFinished ?? false)
             }
@@ -296,11 +299,10 @@ final class AppState {
             result = result.filter { (progress(itemID: $0.id)?.fraction ?? 0) <= 0.001 }
         case .downloaded:
             // A podcast counts as downloaded when any of its episodes is.
-            result = result.filter { item in
-                item.isPodcast
-                    ? downloads.downloadedBooks.contains { $0.itemID == item.id }
-                    : downloads.isDownloaded(item.id)
-            }
+            let downloaded = downloads.downloadedBooks
+            let shows = Set(downloaded.map(\.itemID))
+            let books = Set(downloaded.filter { $0.episodeID == nil }.map(\.itemID))
+            result = result.filter { ($0.isPodcast ? shows : books).contains($0.id) }
         }
 
         let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
@@ -358,12 +360,12 @@ final class AppState {
         errorMessage = nil
         isLoading = true
         defer { isLoading = false }
-        let cleaned = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = Self.normalizedServerURL(url)
         do {
             let t = try await APIClient(serverURL: cleaned, token: nil)
                 .login(username: username, password: password)
             let id = UUID().uuidString
-            let existing = servers.first(where: { $0.url == cleaned })
+            let existing = servers.first(where: { Self.normalizedServerURL($0.url) == cleaned })
             // Signing in again to the active server keeps what's playing.
             if let active = activeServerID, active != (existing?.id ?? id) { activeServerWillChange() }
             // Reuse an existing server for the same URL instead of duplicating it.
@@ -438,6 +440,7 @@ final class AppState {
         episodesLoadFailed = []
         fetchedRecentEpisodes = []
         episodeResumes = []
+        otherLibraryResumes = []
         unresolvedResumeRows = []
         itemsByID = [:]
         itemDetailCache = [:]
@@ -516,6 +519,22 @@ final class AppState {
         URLComponents(string: url)?.host ?? url
     }
 
+    /// One spelling per server, so signing in again with `HTTPS://Host/`
+    /// finds the `https://host` already saved: trimmed, scheme and host
+    /// lowercased, the default port and trailing slashes dropped. Paths keep
+    /// their case (a server behind a sub-path is case-sensitive).
+    nonisolated static func normalizedServerURL(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var comps = URLComponents(string: trimmed), let scheme = comps.scheme?.lowercased() else {
+            return trimmed
+        }
+        comps.scheme = scheme
+        comps.host = comps.host?.lowercased()
+        if (scheme == "https" && comps.port == 443) || (scheme == "http" && comps.port == 80) { comps.port = nil }
+        while comps.path.hasSuffix("/") { comps.path.removeLast() }
+        return comps.string ?? trimmed
+    }
+
     // MARK: Library loading
 
     func loadLibraries() async {
@@ -532,7 +551,7 @@ final class AppState {
             // flash while resumes resolve), and resolveItem then finds shows
             // in the just-loaded items for free.
             if let id = selectedLibraryID { await loadItems(libraryID: id) }
-            await refreshEpisodeResumes()
+            await refreshResumes()
         } catch {
             guard activeServerID == server else { return }
             report(error)
@@ -548,7 +567,7 @@ final class AppState {
         await loadProgress()
         await flushPendingProgress()
         await refreshRecentEpisodes()
-        await refreshEpisodeResumes()
+        await refreshResumes()
         lastSyncedAt = Date()
         isSyncing = false
     }
@@ -665,7 +684,11 @@ final class AppState {
         isLoading = false
         guard activeServerID == server, selectedLibraryID == libraryID else { return }
         switch result {
-        case .success(let loaded): items = loaded
+        case .success(let loaded):
+            items = loaded
+            // Books that just left (or joined) the loaded set move between
+            // `items` and otherLibraryResumes.
+            Task { await refreshResumes() }
         case .failure(let error): report(error)
         }
     }
@@ -870,7 +893,7 @@ final class AppState {
            !episodeResumes.contains(where: { $0.item.id == itemID && $0.episode.id == episodeID }),
            episodesByItem[itemID]?.contains(where: { $0.id == episodeID }) == true
                || fetchedRecentEpisodes.contains(where: { $0.libraryItemId == itemID && $0.id == episodeID }) {
-            Task { await refreshEpisodeResumes() }
+            Task { await refreshResumes() }
         }
 
         // Bound now, not when the write runs: after a server switch the
@@ -993,7 +1016,7 @@ final class AppState {
     /// deleted server-side) are skipped, never surfaced as errors. A call
     /// arriving while a pass is in flight queues one follow-up pass, so a
     /// refresh triggered by fresher progress is never silently dropped.
-    func refreshEpisodeResumes() async {
+    func refreshResumes() async {
         guard episodeResumeRefreshInFlight == false else {
             episodeResumeRefreshQueued = true
             return
@@ -1003,7 +1026,53 @@ final class AppState {
         repeat {
             episodeResumeRefreshQueued = false
             await runEpisodeResumePass()
+            await runBookResumePass()
         } while episodeResumeRefreshQueued
+    }
+
+    /// Book-level progress rows worth resuming (started, unfinished), item ids
+    /// most recently played first, capped. Pure, like episodeResumeCandidates.
+    nonisolated static func bookResumeCandidates(
+        in progress: [ProgressKey: ItemProgress], limit: Int = 12
+    ) -> [String] {
+        progress
+            .filter { $0.key.episodeID == nil && $0.value.fraction > 0.001 && !$0.value.isFinished }
+            .sorted { $0.value.lastUpdate > $1.value.lastUpdate }
+            .prefix(limit)
+            .map(\.key.itemID)
+    }
+
+    /// Rebuild `otherLibraryResumes`: in-progress books that aren't in the
+    /// loaded library, looked up by id. A 404 (book deleted, progress row
+    /// left behind) is tombstoned like a vanished episode; any other failure
+    /// is retried on the next sync.
+    private func runBookResumePass() async {
+        let server = activeServerID
+        let loaded = Set(items.map(\.id))
+        var resolved: [LibraryItem] = []
+        for itemID in Self.bookResumeCandidates(in: progressByItem) where !loaded.contains(itemID) {
+            guard server == activeServerID else { return }
+            if let existing = otherLibraryResumes.first(where: { $0.id == itemID }) ?? item(byID: itemID)
+                ?? itemsByID[itemID] {
+                if !existing.isPodcast { resolved.append(existing) }
+                continue
+            }
+            let stamp = progressByItem[ProgressKey(itemID: itemID, episodeID: nil)]?.lastUpdate ?? 0
+            let rowKey = "\(itemID)||\(stamp)"
+            guard !unresolvedResumeRows.contains(rowKey) else { continue }
+            do {
+                let fetched = try await api.item(itemID: itemID)
+                guard server == activeServerID else { return }
+                itemsByID[itemID] = fetched
+                if !fetched.isPodcast { resolved.append(fetched) }
+            } catch let error as APIError where error.status == 404 {
+                unresolvedResumeRows.insert(rowKey)
+            } catch {
+                continue
+            }
+        }
+        guard server == activeServerID else { return }
+        otherLibraryResumes = resolved
     }
 
     private func runEpisodeResumePass() async {
