@@ -54,7 +54,7 @@ struct HomeView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.Space.xl + 6) {
                 section(0) {
-                    ListeningHeader()
+                    ListeningHeader(onOpen: { selected = $0 })
                         .modifier(CenteredContent(maxWidth: contentMaxWidth))
                 }
 

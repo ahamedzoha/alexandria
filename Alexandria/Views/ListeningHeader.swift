@@ -7,6 +7,8 @@ import SwiftUI
 /// not through decoration — the page stays on the plain window background.
 struct ListeningHeader: View {
     @Environment(AppState.self) private var app
+    /// Opens a book's details (a click on its mosaic tile).
+    var onOpen: (LibraryItem) -> Void = { _ in }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The entrance (bars growing from zero, totals rolling up) plays once per
@@ -49,14 +51,10 @@ struct ListeningHeader: View {
                 .accessibilityLabel(weekSummary(weekTotal: weekTotal, streak: streak))
             }
             Spacer(minLength: Theme.Space.l)
-            // Only when there's a library to summarize — a 0/0 ring reads as an
-            // unfinished artifact.
-            if app.libraryTotal > 0 {
-                LibraryRing(progress: app.libraryCompletion,
-                            finished: app.finishedCount,
-                            total: app.libraryTotal,
-                            inProgress: app.inProgressCount,
-                            entered: entered)
+            // Books only: a podcast library's items are shows, which don't
+            // get finished.
+            if app.items.contains(where: { !$0.isPodcast }) {
+                LibraryMosaic(entered: entered, onOpen: onOpen)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -213,51 +211,140 @@ private struct WeekBars: View {
     }
 }
 
-/// Bolder sibling of `CompletionRing`: a thicker accent stroke, a percentage
-/// that counts up on first appearance, and the finished / in-progress counts
-/// as two quiet lines beneath.
-private struct LibraryRing: View {
-    let progress: Double
-    let finished: Int
-    let total: Int
-    let inProgress: Int
-    let entered: Bool
+/// The library as covers instead of a percentage: one small tile per book,
+/// finished first, then in progress, then the rest — so the colored area
+/// *is* the progress, filling from the top left. Finished books are in full
+/// color, in-progress ones carry an accent line, unstarted ones wait in
+/// grayscale. Hover names a book; click opens it. On first appearance the
+/// tiles arrive in a diagonal wave and then the read ones color in.
+private struct LibraryMosaic: View {
+    @Environment(AppState.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let entered: Bool
+    let onOpen: (LibraryItem) -> Void
 
-    private let size: CGFloat = 130
-    private let stroke: CGFloat = 12
+    private static let columns = 10
+    private static let rows = 6
+    private static let tile: CGFloat = 22
+    private static let gap: CGFloat = 3
+
+    private enum Status: Int { case finished, inProgress, unread }
+
+    private struct Tile: Identifiable {
+        let item: LibraryItem
+        let status: Status
+        let fraction: Double
+        var id: String { item.id }
+    }
+
+    /// Books in fill order; past the grid's capacity the last cell says how
+    /// many more there are.
+    private var tiles: (shown: [Tile], more: Int) {
+        let books = app.items.filter { !$0.isPodcast }.map { item -> Tile in
+            let p = app.progress(itemID: item.id)
+            let status: Status = p?.isFinished == true ? .finished
+                : (p?.fraction ?? 0) > 0.001 ? .inProgress : .unread
+            return Tile(item: item, status: status, fraction: p?.fraction ?? 0)
+        }
+        .sorted { ($0.status.rawValue, $0.item.title) < ($1.status.rawValue, $1.item.title) }
+        let capacity = Self.columns * Self.rows
+        guard books.count > capacity else { return (books, 0) }
+        return (Array(books.prefix(capacity - 1)), books.count - (capacity - 1))
+    }
 
     var body: some View {
-        let shown = entered ? progress : 0
-        VStack(spacing: Theme.Space.s) {
-            ZStack {
-                Circle()
-                    .stroke(Color.primary.opacity(0.10), lineWidth: stroke)
-                Circle()
-                    .trim(from: 0, to: shown)
-                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: stroke, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                Text("\(Int((shown * 100).rounded()))%")
-                    .font(.title.bold())
+        let (shown, more) = tiles
+        VStack(alignment: .trailing, spacing: Theme.Space.s) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("\(app.finishedCount)")
+                    .font(.title2.bold())
                     .monospacedDigit()
                     .contentTransition(.numericText())
+                Text("of \(app.libraryTotal) finished")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
-            .frame(width: size, height: size)
-            .animation(reduceMotion ? nil : .smooth(duration: 0.9), value: shown)
+            .animation(reduceMotion ? nil : .snappy, value: app.finishedCount)
 
-            VStack(spacing: 1) {
-                Text("\(finished) of \(total) finished")
-                Text("\(inProgress) in progress")
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(Self.tile), spacing: Self.gap), count: Self.columns),
+                      spacing: Self.gap) {
+                ForEach(Array(shown.enumerated()), id: \.element.id) { index, tile in
+                    MosaicTile(tile: tile.item, status: tile.status.rawValue, fraction: tile.fraction,
+                               index: index, columns: Self.columns, size: Self.tile, entered: entered)
+                        .onTapGesture { onOpen(tile.item) }
+                }
+                if more > 0 {
+                    Text("+\(more)")
+                        .font(.caption2.weight(.semibold))
+                        .monospacedDigit()
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                        .foregroundStyle(.secondary)
+                        .frame(width: Self.tile, height: Self.tile)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .help("\(more) more books")
+                }
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
-            .contentTransition(.numericText())
-            .animation(reduceMotion ? nil : .snappy, value: finished)
-            .animation(reduceMotion ? nil : .snappy, value: inProgress)
+            .frame(width: CGFloat(Self.columns) * (Self.tile + Self.gap) - Self.gap)
+
+            Text("\(app.inProgressCount) in progress · \(max(0, app.libraryTotal - app.finishedCount - app.inProgressCount)) to go")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
         }
-        .accessibilityElement()
-        .accessibilityLabel("Library \(Int((progress * 100).rounded())) percent complete, \(finished) of \(total) finished, \(inProgress) in progress")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Library: \(app.finishedCount) of \(app.libraryTotal) books finished, \(app.inProgressCount) in progress")
+    }
+}
+
+/// One book in the mosaic.
+private struct MosaicTile: View {
+    @Environment(AppState.self) private var app
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let tile: LibraryItem
+    let status: Int          // 0 finished · 1 in progress · 2 unread
+    let fraction: Double
+    let index: Int
+    let columns: Int
+    let size: CGFloat
+    let entered: Bool
+    @State private var hovering = false
+
+    /// Diagonal wave: cells on the same anti-diagonal arrive together.
+    private var waveDelay: Double {
+        min(Double(index / columns + index % columns) * 0.025, 0.45)
+    }
+
+    var body: some View {
+        let colored = status != 2 && entered
+        RemoteImage(url: app.coverURL(itemID: tile.id)) { image in
+            image.resizable().aspectRatio(contentMode: .fill)
+        } fallback: {
+            Rectangle().fill(.quaternary)
+        }
+        .frame(width: size, height: size)
+        // Unread waits in grayscale; read books color in after they land.
+        .saturation(colored ? 1 : 0)
+        .opacity(status == 2 ? 0.45 : 1)
+        .overlay(alignment: .bottom) {
+            if status == 1 {
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(height: 2)
+                    .scaleEffect(x: max(0.08, fraction), anchor: .leading)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Theme.hairline))
+        .scaleEffect(entered ? (hovering && !reduceMotion ? 1.35 : 1) : 0.6)
+        .opacity(entered ? 1 : 0)
+        .shadow(color: .black.opacity(hovering ? 0.3 : 0), radius: 4, y: 2)
+        .zIndex(hovering ? 1 : 0)
+        .animation(reduceMotion ? nil : .spring(duration: 0.5, bounce: 0.25).delay(waveDelay), value: entered)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.6).delay(waveDelay + 0.35), value: colored)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.18), value: hovering)
+        .onHover { hovering = $0 }
+        .help("\(tile.title) — \(status == 0 ? "finished" : status == 1 ? "\(Int(fraction * 100))% in" : "not started")")
     }
 }
 
