@@ -8,6 +8,19 @@ struct SettingsView: View {
         @Bindable var app = app
         Form {
             Section {
+                Picker("Scroll bars", selection: $app.scrollBarStyle) {
+                    ForEach(ScrollBarStyle.allCases) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+            } header: {
+                Text("Appearance")
+            } footer: {
+                Text("Takes effect the next time you open Alexandria.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle("Show ratings from the web", isOn: $app.webRatingsEnabled)
                 Picker("Audible store", selection: $app.audibleStore) {
                     ForEach(AudibleStore.allCases) { store in

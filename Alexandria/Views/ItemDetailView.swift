@@ -356,7 +356,8 @@ struct ItemDetailView: View {
             Image(systemName: "xmark")
                 .font(.callout.weight(.bold))
                 .foregroundStyle(.primary)
-                .padding(8)
+                .frame(width: 30, height: 30)
+                .contentShape(Circle())   // the whole glass circle clicks, not just the ✕
                 .navGlassCircle()
         }
         .buttonStyle(.plain)

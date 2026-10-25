@@ -104,6 +104,14 @@ extension View {
         modifier(HoverLift())
     }
 
+    /// Plain-style icon buttons only hit-test the glyph's ink, so clicks a
+    /// few points off the symbol fell through (the detail sheet's ✕ was the
+    /// worst). This hands the whole square — at least `size` points — to the
+    /// button. Apply it to the label.
+    func iconHitTarget(_ size: CGFloat = 28) -> some View {
+        frame(minWidth: size, minHeight: size).contentShape(Rectangle())
+    }
+
     /// Apply a `Theme.Shadow` elevation token.
     func themeShadow(_ style: Theme.ShadowStyle) -> some View {
         shadow(color: style.color, radius: style.radius, y: style.y)

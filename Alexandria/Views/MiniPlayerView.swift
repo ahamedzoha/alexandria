@@ -87,28 +87,31 @@ struct MiniPlayerView: View {
             .foregroundStyle(.secondary)
         }
 
-        HStack(spacing: 18) {
-            Button { player.prevChapter() } label: { Image(systemName: "backward.end.fill") }
+        HStack(spacing: 6) {
+            Button { player.prevChapter() } label: { Image(systemName: "backward.end.fill").iconHitTarget(32) }
                 .disabled(player.chapters.isEmpty)
                 .help("Previous Chapter").accessibilityLabel("Previous Chapter")
             Button { backSkips += 1; player.skip(-15) } label: {
                 Image(systemName: "gobackward.15")
                     .symbolEffect(.bounce, value: backSkips)
+                    .iconHitTarget(32)
             }
             .help("Skip Back 15 Seconds").accessibilityLabel("Skip Back 15 Seconds")
             Button { player.toggle() } label: {
                 Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.largeTitle)
                     .contentTransition(.symbolEffect(.replace))
+                    .contentShape(Circle())
             }
             .help(player.isPlaying ? "Pause" : "Play")
             .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
             Button { forwardSkips += 1; player.skip(30) } label: {
                 Image(systemName: "goforward.30")
                     .symbolEffect(.bounce, value: forwardSkips)
+                    .iconHitTarget(32)
             }
             .help("Skip Forward 30 Seconds").accessibilityLabel("Skip Forward 30 Seconds")
-            Button { player.nextChapter() } label: { Image(systemName: "forward.end.fill") }
+            Button { player.nextChapter() } label: { Image(systemName: "forward.end.fill").iconHitTarget(32) }
                 .disabled(player.chapters.isEmpty)
                 .help("Next Chapter").accessibilityLabel("Next Chapter")
         }

@@ -207,6 +207,7 @@ struct MainView: View {
                 app.clearGroup()
             } label: {
                 Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    .iconHitTarget(24)
             }
             .buttonStyle(.plain)
             .help("Clear filter")
@@ -240,6 +241,7 @@ struct MainView: View {
                 Button { clearSearch() } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.tertiary)
+                        .iconHitTarget(24)
                 }
                 .buttonStyle(.plain)
                 .help("Clear search (esc)")

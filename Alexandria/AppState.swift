@@ -162,6 +162,10 @@ final class AppState {
     var audibleStore: AudibleStore = AudibleStore(rawValue: UserDefaults.standard.string(forKey: "audibleStore") ?? "") ?? .automatic {
         didSet { UserDefaults.standard.set(audibleStore.rawValue, forKey: "audibleStore") }
     }
+    // Settings ▸ Scroll bars (applied at the next launch; see ScrollBarStyle).
+    var scrollBarStyle: ScrollBarStyle = ScrollBarStyle.stored {
+        didSet { UserDefaults.standard.set(scrollBarStyle.rawValue, forKey: ScrollBarStyle.defaultsKey) }
+    }
     // The trailing Now Playing inspector; remembered across launches.
     var showNowPlayingInfo: Bool = UserDefaults.standard.bool(forKey: "showNowPlayingInfo") {
         didSet { UserDefaults.standard.set(showNowPlayingInfo, forKey: "showNowPlayingInfo") }

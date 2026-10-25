@@ -7,11 +7,11 @@ struct AlexandriaApp: App {
     @StateObject private var updater = UpdaterModel()
 
     init() {
-        // 0.5.1 and earlier forced overlay scrollers by writing this key into
-        // the app's own defaults, overriding System Settings ▸ "Show scroll
-        // bars" — often an accessibility choice. Remove the stale override so
-        // the system setting applies again.
+        // 0.5.1 and earlier persisted this override into the app's defaults,
+        // where it outlived any change of mind. Clear it; ScrollBarStyle
+        // applies the user's choice per launch instead.
         UserDefaults.standard.removeObject(forKey: "AppleShowScrollBars")
+        ScrollBarStyle.applyAtLaunch()
     }
 
     var body: some Scene {
@@ -86,5 +86,39 @@ private struct MenuBarIcon: View {
     var body: some View {
         Image(systemName: isPlaying ? "waveform" : "headphones")
             .symbolEffect(.variableColor.iterative, isActive: isPlaying && !reduceMotion)
+    }
+}
+
+/// Settings ▸ Scroll bars. Slim overlay scrollers (fade in while scrolling)
+/// by default; "Follow System Settings" keeps the classic bars macOS shows
+/// with a mouse attached, for anyone who relies on them.
+enum ScrollBarStyle: String, CaseIterable, Identifiable {
+    case slim, system
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .slim: "Slim, shown while scrolling"
+        case .system: "Follow System Settings"
+        }
+    }
+
+    static let defaultsKey = "scrollBarStyle"
+
+    static var stored: ScrollBarStyle {
+        ScrollBarStyle(rawValue: UserDefaults.standard.string(forKey: defaultsKey) ?? "") ?? .slim
+    }
+
+    /// AppKit settles the scroller style at launch, so this runs from the
+    /// App's init. The override goes in the argument domain — read like a
+    /// `-AppleShowScrollBars` launch flag, never written to disk — so it ends
+    /// with the process and can't get stuck the way 0.5.1's did.
+    static func applyAtLaunch() {
+        guard stored == .slim else { return }
+        let defaults = UserDefaults.standard
+        var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
+        arguments["AppleShowScrollBars"] = "WhenScrolling"
+        defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
     }
 }

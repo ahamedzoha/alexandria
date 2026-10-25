@@ -79,25 +79,24 @@ struct EpisodeListView: View {
     }
 
     private func headerRow(total: Int) -> some View {
-        HStack {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text("Episodes").font(.headline)
             Text("\(total)")
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, Theme.Space.s).padding(.vertical, 2)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: Theme.Radius.pill, style: .continuous))
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
             Spacer()
-            Menu {
-                Picker("Show", selection: $filter) {
-                    ForEach(Filter.allCases) { Text($0.rawValue).tag($0) }
-                }
-            } label: {
-                Label(filter == .all ? "Filter" : filter.rawValue,
-                      systemImage: "line.3.horizontal.decrease.circle")
+            // A plain menu picker: the current choice is the label.
+            Picker("Show", selection: $filter) {
+                ForEach(Filter.allCases) { Text($0.rawValue).tag($0) }
             }
+            .pickerStyle(.menu)
+            .labelsHidden()
             .fixedSize()
-            .help("Filter episodes")
+            .help("Show which episodes")
         }
-        .padding(Theme.Space.m)
+        .padding(.horizontal, Theme.Space.m)
+        .padding(.top, Theme.Space.m)
+        .padding(.bottom, Theme.Space.xs)
     }
 
     private func seasonHeader(_ season: String) -> some View {

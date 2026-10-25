@@ -137,14 +137,16 @@ struct NowPlayingBar: View {
     }
 
     private var transport: some View {
-        HStack(spacing: 14) {
-            Button { player.prevChapter() } label: { Image(systemName: "backward.end.fill") }
+        // Glyphs sit in 28pt hit squares, so the visual gap comes from those.
+        HStack(spacing: 2) {
+            Button { player.prevChapter() } label: { Image(systemName: "backward.end.fill").iconHitTarget() }
                 .buttonStyle(.plain).disabled(player.chapters.isEmpty)
                 .help("Previous Chapter").accessibilityLabel("Previous Chapter")
 
             Button { backSkips += 1; player.skip(-15) } label: {
                 Image(systemName: "gobackward.15")
                     .symbolEffect(.bounce, value: backSkips)
+                    .iconHitTarget()
             }
             .buttonStyle(.plain)
             .help("Skip Back 15 Seconds").accessibilityLabel("Skip Back 15 Seconds")
@@ -153,6 +155,7 @@ struct NowPlayingBar: View {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                     .font(.title2)
                     .contentTransition(.symbolEffect(.replace))
+                    .iconHitTarget(32)
             }
             .buttonStyle(.plain)
             .help(player.isPlaying ? "Pause" : "Play").accessibilityLabel(player.isPlaying ? "Pause" : "Play")
@@ -160,11 +163,12 @@ struct NowPlayingBar: View {
             Button { forwardSkips += 1; player.skip(30) } label: {
                 Image(systemName: "goforward.30")
                     .symbolEffect(.bounce, value: forwardSkips)
+                    .iconHitTarget()
             }
             .buttonStyle(.plain)
             .help("Skip Forward 30 Seconds").accessibilityLabel("Skip Forward 30 Seconds")
 
-            Button { player.nextChapter() } label: { Image(systemName: "forward.end.fill") }
+            Button { player.nextChapter() } label: { Image(systemName: "forward.end.fill").iconHitTarget() }
                 .buttonStyle(.plain).disabled(player.chapters.isEmpty)
                 .help("Next Chapter").accessibilityLabel("Next Chapter")
         }
