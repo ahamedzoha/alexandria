@@ -11,7 +11,8 @@ private func countLabel(_ count: Int, noun: String) -> String {
 struct SeriesGridView: View {
     @Environment(AppState.self) private var app
 
-    private let columns = [GridItem(.adaptive(minimum: 200, maximum: 240), spacing: 28)]
+    // Covers fill their column, so the gutter is the only horizontal space.
+    private let columns = [GridItem(.adaptive(minimum: 170, maximum: 220), spacing: Theme.Space.l)]
 
     private var mediaNoun: String {
         app.libraries.first { $0.id == app.selectedLibraryID }?.mediaType == "podcast" ? "show" : "book"
@@ -47,7 +48,8 @@ struct SeriesGridView: View {
                                        description: Text("Series appear here once your books include series metadata."))
             } else {
                 ScrollView {
-                    LazyVGrid(columns: columns, spacing: 28) {
+                    // Rows already carry the stack headroom above each cover.
+                    LazyVGrid(columns: columns, spacing: Theme.Space.l) {
                         ForEach(groups) { group in
                             Button {
                                 app.showGroup(kind: .series, value: group.name)
@@ -74,23 +76,30 @@ struct SeriesCard: View {
     let coverIDs: [String]
     let noun: String
 
+    /// How far each book behind rises above the one in front of it.
+    private static let peek: CGFloat = 12
+    private static let maxPeeks = 2
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ZStack {
-                // Peek cards behind the primary cover imply a stack.
-                ForEach(Array(coverIDs.dropFirst().prefix(2).enumerated()), id: \.offset) { index, id in
+        VStack(alignment: .leading, spacing: Theme.Space.s + 2) {
+            ZStack(alignment: .top) {
+                // Books 2 and 3 rise behind book 1, each a clear strip taller
+                // and a step narrower, so the stack reads at a glance.
+                ForEach(Array(coverIDs.dropFirst().prefix(Self.maxPeeks).enumerated()), id: \.offset) { index, id in
                     let depth = CGFloat(index + 1)
                     cover(id)
-                        .scaleEffect(1 - depth * 0.06)
-                        .offset(y: -depth * 10)
-                        .brightness(-0.15 * depth)
+                        .scaleEffect(1 - depth * 0.07, anchor: .top)
+                        .offset(y: -depth * Self.peek)
+                        .brightness(-0.12 * depth)
                         .zIndex(-depth)
                 }
                 if let first = coverIDs.first {
                     cover(first).zIndex(1)
                 }
             }
-            .frame(height: 210)
+            // Same headroom for every card, stacked or single, so covers
+            // in a row line up.
+            .padding(.top, Self.peek * CGFloat(Self.maxPeeks))
             .hoverLift()
 
             HStack(spacing: 6) {
@@ -105,13 +114,9 @@ struct SeriesCard: View {
     }
 
     private func cover(_ id: String) -> some View {
-        RemoteImage(url: app.coverURL(itemID: id)) { image in
-            image.resizable().aspectRatio(contentMode: .fit)
-        } fallback: {
-            RoundedRectangle(cornerRadius: Theme.Radius.cover).fill(.quaternary)
-        }
-        .frame(width: 160, height: 160)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous))
+        CoverArt(url: app.coverURL(itemID: id), title: name)
+            .aspectRatio(1, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous).strokeBorder(Theme.hairline))
         .themeShadow(Theme.Shadow.card)
     }
