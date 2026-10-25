@@ -30,5 +30,19 @@
 	     network.client entitlement. -->
 	<key>SUEnableInstallerLauncherService</key>
 	<true/>
+	<!-- Books and episodes dragged onto Up Next carry this type. -->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.alexandria.mac.queue-entry</string>
+			<key>UTTypeDescription</key>
+			<string>Alexandria Up Next Item</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

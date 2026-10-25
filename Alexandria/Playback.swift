@@ -54,7 +54,9 @@ func startPlayback(item: LibraryItem, episode: PodcastEpisode? = nil, app: AppSt
                                  title: title,
                                  author: episode == nil ? item.author : item.title,
                                  cover: cover)
-        if !loaded {
+        if loaded {
+            await app.playbackStarted(item: item, episode: episode)
+        } else {
             app.presentFailure("Couldn't Play “\(title)”",
                                APIError(message: "The server didn't offer any audio this app can play."))
         }

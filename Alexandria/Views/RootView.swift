@@ -35,16 +35,11 @@ struct RootView: View {
             // episode.
             // app and player live as long as the process, so strong captures
             // are fine (the weak ones here only produced compiler warnings).
-            player.onFinished = { id, episodeID in
-                Task { @MainActor in
-                    guard let episodeID, app.autoPlayNextEpisodes else { return }
-                    // Cache miss (e.g. quick-play from the Home shelf): load
-                    // the show's episode list before looking up the next one.
-                    if app.episodes(for: id) == nil { await app.loadEpisodes(itemID: id) }
-                    guard let next = app.nextEpisode(after: episodeID, in: id),
-                          let item = await app.resolveItem(id: id) else { return }
-                    startPlayback(item: item, episode: next, app: app, player: player)
-                }
+            // Natural end: continue with Up Next (books too, now) unless the
+            // setting is off or a sleep timer stopped here.
+            player.onFinished = { _, _, continueQueue in
+                guard continueQueue, app.autoPlayNextEpisodes, let next = app.queue.popNext() else { return }
+                startPlayback(item: next.item, episode: next.episode, app: app, player: player)
             }
             // Logout / server switch: stop before the server changes, so the
             // final position lands on the server the item belongs to.

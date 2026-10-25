@@ -92,6 +92,7 @@ struct EpisodeCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .contextMenu { menu }
+        .queueDraggable(item ?? show, episode: episode)
     }
 
     /// "2 days ago · 42 min" — whichever parts the feed provided.
@@ -140,6 +141,9 @@ struct EpisodeCard: View {
     // item resolve it when invoked.
     @ViewBuilder private var menu: some View {
         Button("Play", systemImage: "play.fill", action: play)
+        if let show = item ?? show {
+            QueueMenuItems(item: show, episode: episode)
+        }
         if let itemID = episode.libraryItemId {
             if progress?.isFinished == true {
                 Button("Mark as Unplayed", systemImage: "circle") {

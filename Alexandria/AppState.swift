@@ -106,6 +106,8 @@ final class AppState {
     // is retried if it updates again (lastUpdate changes the key).
     @ObservationIgnored private var unresolvedResumeRows: Set<String> = []
     let downloads = DownloadStore()
+    /// Up Next: what plays when the current item finishes.
+    let queue = PlaybackQueue()
     // Items fetched individually via resolveItem (auto-play/next-episode
     // targets that aren't in `items` or `recentItems`), keyed by id.
     @ObservationIgnored private var itemsByID: [String: LibraryItem] = [:]
@@ -172,6 +174,13 @@ final class AppState {
     // Home's header has scrolled under the toolbar: its compact twin and the
     // level visualizer show in the toolbar.
     var homeHeaderCollapsed = false
+    enum InspectorTab: String, CaseIterable, Identifiable {
+        case details = "Details"
+        case upNext = "Up Next"
+        var id: String { rawValue }
+    }
+    /// Which side of the Now Playing inspector is showing.
+    var inspectorTab: InspectorTab = .details
     // The trailing Now Playing inspector; remembered across launches.
     var showNowPlayingInfo: Bool = UserDefaults.standard.bool(forKey: "showNowPlayingInfo") {
         didSet { UserDefaults.standard.set(showNowPlayingInfo, forKey: "showNowPlayingInfo") }
@@ -187,6 +196,7 @@ final class AppState {
 
     init() {
         loadServers()
+        queue.bind(to: activeServerID)
         CoverCache.shared.authToken = token
         if isLoggedIn { startSyncLoop() }
     }
@@ -358,6 +368,7 @@ final class AppState {
         UserDefaults.standard.removeObject(forKey: tokenKey(id))
         servers.removeAll { $0.id == id }
         downloads.dropPending(serverID: id)
+        queue.forget(serverID: id)
         persistServers()
         // Removing a server you aren't using leaves the current view alone.
         guard wasActive else { return }
@@ -389,6 +400,7 @@ final class AppState {
         itemsByID = [:]
         itemDetailCache = [:]
         authorDetailCache = [:]
+        queue.bind(to: activeServerID)   // this server's saved Up Next
         selectedLibraryID = nil
         searchText = ""
         groupKind = nil
@@ -965,14 +977,33 @@ final class AppState {
         }
     }
 
-    /// Next unfinished episode after the given one, in feed order (oldest →
-    /// newest, same `sortDate` key as EpisodeListView), so episodic shows
-    /// advance chronologically. Finished episodes are skipped.
-    func nextEpisode(after episodeID: String, in itemID: String) -> PodcastEpisode? {
-        guard let list = episodesByItem[itemID] else { return nil }
-        return EpisodeOrder.nextEpisode(after: episodeID, in: list) {
-            progress(itemID: itemID, episodeID: $0.id)?.isFinished ?? false
+    // MARK: Up Next
+
+    /// Playback started on `item` (and `episode`): take it off the queue and
+    /// refill the automatic part — the show's following unplayed episodes, or
+    /// the series' next unfinished books.
+    func playbackStarted(item: LibraryItem, episode: PodcastEpisode?) async {
+        guard let id = QueueEntry(item: item, episode: episode)?.id else { return }
+        if let episode {
+            if episodesByItem[item.id] == nil { await loadEpisodes(itemID: item.id, quiet: true) }
+            let following = PlaybackQueue.followingEpisodes(after: episode.id, in: episodesByItem[item.id] ?? []) {
+                self.progress(itemID: item.id, episodeID: $0.id)?.isFinished ?? false
+            }
+            queue.started(id, automatic: following.compactMap { QueueEntry(item: item, episode: $0) }, source: item.title)
+        } else {
+            let following = PlaybackQueue.followingBooks(after: item, in: items) {
+                self.progress(itemID: $0.id)?.isFinished ?? false
+            }
+            queue.started(id, automatic: following.compactMap { QueueEntry(item: $0, episode: nil) },
+                          source: item.seriesBaseName)
         }
+    }
+
+    /// Add a book or episode to Up Next. A podcast show itself isn't
+    /// queueable — its episodes are.
+    func enqueue(_ item: LibraryItem, episode: PodcastEpisode? = nil, next: Bool) {
+        guard let entry = QueueEntry(item: item, episode: episode) else { return }
+        next ? queue.playNext(entry) : queue.playLater(entry)
     }
 
     /// The show's chosen order: what the user picked, else the default for

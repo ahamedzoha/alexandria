@@ -51,6 +51,7 @@ struct NowPlayingBar: View {
             scrubber
             sleepButton
             speedButton
+            queueButton
         }
     }
 
@@ -205,6 +206,32 @@ struct NowPlayingBar: View {
         .help("Playback speed")
         .popover(isPresented: $showSpeedPopover) {
             SpeedPopover(accent: accent)
+        }
+    }
+
+    /// Opens (or closes) the inspector on Up Next.
+    private var queueButton: some View {
+        let showing = app.showNowPlayingInfo && app.inspectorTab == .upNext
+        return Button {
+            if showing {
+                app.showNowPlayingInfo = false
+            } else {
+                app.inspectorTab = .upNext
+                app.showNowPlayingInfo = true
+            }
+        } label: {
+            Image(systemName: "list.bullet")
+                .foregroundStyle(showing ? accent : .secondary)
+                .iconHitTarget()
+        }
+        .buttonStyle(.plain)
+        .help(showing ? "Hide Up Next" : "Up Next")
+        .accessibilityLabel("Up Next")
+        .accessibilityAddTraits(showing ? .isSelected : [])
+        // Drop a book or episode here to add it to Up Next.
+        .dropDestination(for: QueueEntry.self) { entries, _ in
+            entries.forEach(app.queue.playLater)
+            return !entries.isEmpty
         }
     }
 
@@ -378,32 +405,45 @@ struct SpeedPopover: View {
     }
 }
 
-/// Sleep-timer options, popover-presented per HIG (anchored, fixed width).
+/// Sleep timer, shaped by what's playing: minute presets, then stop points
+/// from the content itself — the end of this chapter and the two after it,
+/// the end of this episode or book, the end of the next item in Up Next —
+/// each with how long that is at the current speed.
 struct SleepTimerPopover: View {
+    @Environment(AppState.self) private var app
     @Environment(PlayerEngine.self) private var player
     @Environment(\.dismiss) private var dismiss
     let accent: Color
 
     private static let minuteOptions = [5, 10, 15, 30, 45, 60]
 
+    private var options: [SleepOption] {
+        let next = app.autoPlayNextEpisodes ? app.queue.upNext.first : nil
+        return PlayerEngine.sleepOptions(chapters: player.chapters, currentTime: player.currentTime,
+                                         duration: player.duration, rate: player.rate,
+                                         isEpisode: player.currentEpisodeID != nil,
+                                         next: next.map { ($0.title, $0.duration) })
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(alignment: .firstTextBaseline) {
                 Text("Sleep Timer")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.headline)
                 Spacer()
                 if let remaining = player.sleepRemainingSeconds {
-                    Text(remainingLabel(remaining))
+                    Text(Self.clock(remaining))
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(accent)
                         .contentTransition(.numericText(countsDown: true))
-                        .animation(.snappy(duration: 0.25), value: remainingLabel(remaining))
+                        .animation(.snappy(duration: 0.25), value: Self.clock(remaining))
                 } else if player.isSleepArmed {
-                    Text("End of chapter")
+                    Text("Armed")
                         .font(.subheadline)
                         .foregroundStyle(accent)
                 }
             }
+
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                 ForEach(Self.minuteOptions, id: \.self) { minutes in
                     Button {
@@ -415,14 +455,15 @@ struct SleepTimerPopover: View {
                     .buttonStyle(.bordered)
                 }
             }
-            Button {
-                player.setSleepEndOfChapter()
-                dismiss()
-            } label: {
-                Text("End of Chapter").frame(maxWidth: .infinity)
+
+            if !player.itemID.isEmpty {
+                Divider()
+                VStack(spacing: 2) {
+                    ForEach(options) { option in
+                        stopRow(option)
+                    }
+                }
             }
-            .buttonStyle(.bordered)
-            .disabled(player.chapters.isEmpty)
 
             if player.isSleepArmed {
                 Button {
@@ -435,11 +476,43 @@ struct SleepTimerPopover: View {
             }
         }
         .padding(14)
-        .frame(width: 300)
+        .frame(width: 320)
     }
 
-    private func remainingLabel(_ seconds: Double) -> String {
-        let s = Int(seconds)
-        return String(format: "%d:%02d", s / 60, s % 60)
+    private func stopRow(_ option: SleepOption) -> some View {
+        let armed = player.sleepTimer == option.timer
+        return Button {
+            player.setSleep(option.timer)
+            dismiss()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: armed ? "checkmark" : "moon.zzz")
+                    .foregroundStyle(armed ? accent : .secondary)
+                    .frame(width: 16)
+                Text(option.title)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 8)
+                Text(Self.distance(option.remaining))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .font(.callout)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(armed ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityLabel("\(option.title), in \(Self.distance(option.remaining))")
+        .accessibilityAddTraits(armed ? .isSelected : [])
     }
+
+    /// "12 min", "1 hr 5 min", "under a minute".
+    static func distance(_ seconds: Double) -> String {
+        seconds < 60 ? "under a minute" : (durationString(seconds) ?? "")
+    }
+
+    /// Countdown readout: "m:ss", or "h:mm:ss" past an hour.
+    static func clock(_ seconds: Double) -> String { Format.timestamp(seconds) }
 }

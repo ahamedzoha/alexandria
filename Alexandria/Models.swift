@@ -29,20 +29,20 @@ struct ItemsResponse: Decodable, Sendable {
     let total: Int?   // whole-library count, across every page
 }
 
-struct LibraryItem: Decodable, Identifiable, Sendable, Hashable {
+struct LibraryItem: Codable, Identifiable, Sendable, Hashable {   // Codable: Up Next saves entries
     let id: String
     let mediaType: String?   // "book" | "podcast"
     let media: Media?
     let addedAt: Double?   // epoch ms; powers the Recently Added shelf
 
-    struct Media: Decodable, Sendable, Hashable {
+    struct Media: Codable, Sendable, Hashable {
         let metadata: Metadata?
         let duration: Double?
         let numTracks: Int?
         let numEpisodes: Int?   // Podcast Minified only
     }
 
-    struct Metadata: Decodable, Sendable, Hashable {
+    struct Metadata: Codable, Sendable, Hashable {
         let title: String?
         let authorName: String?
         let author: String?       // podcasts use a plain author string

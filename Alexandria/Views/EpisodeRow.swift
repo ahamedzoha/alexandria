@@ -66,6 +66,7 @@ struct EpisodeRow: View {
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { isCurrent ? player.play() : play() }
         .contextMenu { menuItems }
+        .queueDraggable(item, episode: episode)
         .accessibilityElement(children: .contain)
         .accessibilityAction(named: "Play") { play() }
         .accessibilityAction(named: isDownloaded ? "Remove Download" : "Download") { toggleDownload() }
@@ -194,6 +195,7 @@ struct EpisodeRow: View {
 
     @ViewBuilder private var menuItems: some View {
         Button(isFinished ? "Play Again" : inProgress ? "Resume" : "Play", systemImage: "play.fill") { play() }
+        QueueMenuItems(item: item, episode: episode)
         Button(isFinished ? "Mark as Unplayed" : "Mark as Played",
                systemImage: isFinished ? "circle" : "checkmark.circle") {
             toggleFinished()

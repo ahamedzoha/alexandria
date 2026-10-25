@@ -40,10 +40,12 @@ private struct BookShelfCard: View {
     var body: some View {
         CoverCell(item: item, onOpen: onOpen, onPlay: onPlay)
             .contextMenu { menu }
+            .queueDraggable(item)
     }
 
     @ViewBuilder private var menu: some View {
         Button("Play", systemImage: "play.fill", action: onPlay)
+        QueueMenuItems(item: item)
         if app.downloads.isDownloaded(item.id) {
             Button("Remove Download", systemImage: "trash", role: .destructive) {
                 app.removeDownload(itemID: item.id)

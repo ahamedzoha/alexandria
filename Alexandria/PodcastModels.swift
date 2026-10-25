@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Podcast episodes
 
-struct PodcastEpisode: Decodable, Identifiable, Hashable, Sendable {
+struct PodcastEpisode: Codable, Identifiable, Hashable, Sendable {   // Codable: Up Next saves entries
     let id: String
     let libraryItemId: String?
     let index: Int?
@@ -30,26 +30,26 @@ struct PodcastEpisode: Decodable, Identifiable, Hashable, Sendable {
     var displayTitle: String { title ?? "Untitled episode" }
 }
 
-struct EpisodeAudioFile: Decodable, Hashable, Sendable {
+struct EpisodeAudioFile: Codable, Hashable, Sendable {
     let ino: String?
     let duration: Double?
     let mimeType: String?
     let metadata: EpisodeFileMetadata?
 }
 
-struct EpisodeFileMetadata: Decodable, Hashable, Sendable {
+struct EpisodeFileMetadata: Codable, Hashable, Sendable {
     let filename: String?
     let size: Int?
 }
 
 /// Podcast Minified shell attached to each recent-episodes result.
-struct PodcastShellInfo: Decodable, Hashable, Sendable {
+struct PodcastShellInfo: Codable, Hashable, Sendable {
     let metadata: PodcastShellMetadata?
     let coverPath: String?
     let numEpisodes: Int?
 }
 
-struct PodcastShellMetadata: Decodable, Hashable, Sendable {
+struct PodcastShellMetadata: Codable, Hashable, Sendable {
     let title: String?
     let author: String?
 }

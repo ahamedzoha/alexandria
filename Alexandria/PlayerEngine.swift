@@ -36,8 +36,10 @@ final class PlayerEngine {
     private var didFireFinished = false
     /// Set by the app to persist position to the server. (itemID, episodeID, currentTime, duration)
     var onProgress: ((String, String?, Double, Double) -> Void)?
-    /// Fired exactly once when playback reaches its natural end. (itemID, episodeID)
-    var onFinished: ((String, String?) -> Void)?
+    /// Fired exactly once when playback reaches its natural end.
+    /// (itemID, episodeID, continueQueue) — false when a sleep timer set to
+    /// "end of this episode / book" just stopped playback there.
+    var onFinished: ((String, String?, Bool) -> Void)?
 
     // Published state
     var chapters: [Chapter] = []
@@ -55,8 +57,9 @@ final class PlayerEngine {
     // Sleep timer
     enum SleepTimer: Equatable {
         case off
-        case seconds(Double)   // remaining seconds
-        case endOfChapter
+        case seconds(Double)   // remaining wall-clock seconds
+        case at(Double)        // a chapter end in the loaded item, in its timeline
+        case itemEnds(Int)     // stop when this many items have finished (1 = this one)
     }
     var sleepTimer: SleepTimer = .off
     /// Uptime of the last sleep-countdown tick; nil until the next tick after
@@ -74,13 +77,15 @@ final class PlayerEngine {
         chapters.lastIndex(where: { currentTime + 0.5 >= $0.start })
     }
 
-    private var currentChapterEnd: Double? {
-        chapters.last(where: { currentTime + 0.5 >= $0.start })?.end
-    }
-
+    /// Wall-clock seconds until the sleep timer stops playback, when known.
     var sleepRemainingSeconds: Double? {
-        if case .seconds(let s) = sleepTimer { return s }
-        return nil
+        let speed = Double(max(rate, 0.1))
+        switch sleepTimer {
+        case .seconds(let s): return s
+        case .at(let end): return max(0, end - currentTime) / speed
+        case .itemEnds(1): return max(0, duration - currentTime) / speed
+        case .off, .itemEnds: return nil
+        }
     }
 
     var isSleepArmed: Bool { sleepTimer != .off }
@@ -127,7 +132,10 @@ final class PlayerEngine {
         currentTitle = title
         currentAuthor = author
         coverURL = cover
-        sleepTimer = .off
+        // A minute timer or an "end of next episode" count carries on into
+        // the next item (a queue advance used to cancel it); a chapter
+        // position belonged to the old item.
+        if case .at = sleepTimer { sleepTimer = .off; self.player?.volume = 1 }
 
         let lastTrackDuration = sorted.last?.duration ?? 0
         duration = session.duration ?? ((offsets.last ?? 0) + lastTrackDuration)
@@ -267,7 +275,8 @@ final class PlayerEngine {
                         self.didFireFinished = true
                         self.currentTime = self.duration
                         self.reportNow()   // final position == duration so the server sees 100%
-                        self.onFinished?(self.itemID, self.currentEpisodeID)
+                        let continueQueue = self.itemEndedForSleep()
+                        self.onFinished?(self.itemID, self.currentEpisodeID, continueQueue)
                     }
                 }
             }
@@ -443,10 +452,24 @@ final class PlayerEngine {
         sleepTimer = .seconds(Double(minutes * 60))
     }
 
-    func setSleepEndOfChapter() {
+    /// Arm a content-shaped timer (see `sleepOptions`).
+    func setSleep(_ timer: SleepTimer) {
         player?.volume = 1
         lastSleepTick = nil
-        sleepTimer = .endOfChapter
+        sleepTimer = timer
+    }
+
+    /// An item reached its end: count it against an "end of episode" timer.
+    /// Returns whether playback should continue to Up Next.
+    private func itemEndedForSleep() -> Bool {
+        guard case .itemEnds(let remaining) = sleepTimer else { return true }
+        if remaining <= 1 {
+            sleepTimer = .off
+            player?.volume = 1
+            return false
+        }
+        sleepTimer = .itemEnds(remaining - 1)
+        return true
     }
 
     func cancelSleepTimer() {
@@ -470,13 +493,27 @@ final class PlayerEngine {
                 triggerSleep()
             } else {
                 sleepTimer = .seconds(r)
-                if r <= 5 { player?.volume = Float(r / 5) }   // fade out over last 5s
+                fadeOut(remaining: r)
             }
-        case .endOfChapter:
-            if let end = currentChapterEnd, currentTime >= end - 0.25 {
+        case .at(let end):
+            if currentTime > end + 5 {
+                // Seeked well past the stop point: the timer no longer applies.
+                cancelSleepTimer()
+            } else if currentTime >= end - 0.25 {
                 triggerSleep()
+            } else {
+                fadeOut(remaining: (end - currentTime) / Double(max(rate, 0.1)))
             }
+        case .itemEnds(1):
+            fadeOut(remaining: (duration - currentTime) / Double(max(rate, 0.1)))
+        case .itemEnds:
+            break
         }
+    }
+
+    /// The last five seconds before any stop point fade to silence.
+    private func fadeOut(remaining: Double) {
+        if remaining <= 5 { player?.volume = Float(max(0, remaining) / 5) }
     }
 
     private func triggerSleep() {
@@ -551,5 +588,50 @@ final class PlayerEngine {
             self.artwork = art
             self.updateNowPlayingInfo()
         }
+    }
+}
+
+// MARK: - Sleep options
+
+/// One way to stop: what the popover lists, with when it would happen.
+struct SleepOption: Identifiable, Equatable {
+    let title: String
+    let timer: PlayerEngine.SleepTimer
+    let remaining: Double   // wall-clock seconds from now
+    var id: String { title }
+}
+
+extension PlayerEngine {
+    /// Stop points shaped by what's loaded: the end of this chapter and the
+    /// two after it (books, or episodes with chapters); the end of this
+    /// episode / book; and the end of the next queued item. Each carries its
+    /// real distance at the current speed.
+    nonisolated static func sleepOptions(chapters: [Chapter], currentTime: Double, duration: Double,
+                                         rate: Float, isEpisode: Bool,
+                                         next: (title: String, duration: Double?)?) -> [SleepOption] {
+        let speed = Double(max(rate, 0.1))
+        var options: [SleepOption] = []
+
+        if let current = chapters.lastIndex(where: { currentTime + 0.5 >= $0.start }) {
+            for offset in 0..<3 where current + offset < chapters.count {
+                let chapter = chapters[current + offset]
+                // The book's last chapter ends with the book; that option follows.
+                guard chapter.end < duration - 1 else { break }
+                options.append(SleepOption(
+                    title: offset == 0 ? "End of This Chapter" : "End of “\(chapter.title)”",
+                    timer: .at(chapter.end),
+                    remaining: max(0, chapter.end - currentTime) / speed))
+            }
+        }
+
+        let toEnd = max(0, duration - currentTime) / speed
+        options.append(SleepOption(title: isEpisode ? "End of This Episode" : "End of This Book",
+                                   timer: .itemEnds(1), remaining: toEnd))
+
+        if let next, let nextDuration = next.duration, nextDuration > 0 {
+            options.append(SleepOption(title: "End of “\(next.title)”",
+                                       timer: .itemEnds(2), remaining: toEnd + nextDuration / speed))
+        }
+        return options
     }
 }

@@ -65,6 +65,7 @@ struct LibraryGridView: View {
                               onOpen: { selected = item },
                               onPlay: { playItem(item) })
                         .contextMenu { contextMenu(item) }
+                        .queueDraggable(item)
                 }
             }
             .padding(Theme.Space.l)
@@ -127,6 +128,7 @@ struct LibraryGridView: View {
 
     @ViewBuilder private func contextMenu(_ item: LibraryItem) -> some View {
         Button("Play", systemImage: "play.fill") { playItem(item) }
+        QueueMenuItems(item: item)
         if app.downloads.isDownloaded(item.id) {
             Button("Remove Download", systemImage: "trash", role: .destructive) {
                 app.removeDownload(itemID: item.id)

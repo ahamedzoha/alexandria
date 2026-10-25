@@ -6,19 +6,35 @@ import SwiftUI
 /// MainView via `.inspector`; toggled from the Now Playing bar, the toolbar,
 /// and Playback ▸ Show Info.
 struct NowPlayingInspector: View {
+    @Environment(AppState.self) private var app
     @Environment(PlayerEngine.self) private var player
 
     var body: some View {
-        Group {
-            if player.itemID.isEmpty {
-                ContentUnavailableView("Nothing Playing", systemImage: "headphones",
-                                       description: Text("Start a book or an episode and its details show up here."))
-            } else {
-                // Fresh state per item, so nothing from the last book lingers.
-                NowPlayingDetails(itemID: player.itemID, episodeID: player.currentEpisodeID)
-                    .id("\(player.itemID)|\(player.currentEpisodeID ?? "")")
+        @Bindable var app = app
+        VStack(spacing: 0) {
+            Picker("View", selection: $app.inspectorTab) {
+                ForEach(AppState.InspectorTab.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, Theme.Space.l)
+            .padding(.vertical, Theme.Space.s)
+
+            switch app.inspectorTab {
+            case .details:
+                if player.itemID.isEmpty {
+                    ContentUnavailableView("Nothing Playing", systemImage: "headphones",
+                                           description: Text("Start a book or an episode and its details show up here."))
+                } else {
+                    // Fresh state per item, so nothing from the last book lingers.
+                    NowPlayingDetails(itemID: player.itemID, episodeID: player.currentEpisodeID)
+                        .id("\(player.itemID)|\(player.currentEpisodeID ?? "")")
+                }
+            case .upNext:
+                UpNextView()
             }
         }
+        .frame(maxHeight: .infinity, alignment: .top)
         .inspectorColumnWidth(min: 280, ideal: 320, max: 420)
     }
 }

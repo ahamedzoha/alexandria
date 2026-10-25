@@ -54,10 +54,12 @@ struct AlexandriaApp: App {
                 }
                 .keyboardShortcut("i", modifiers: .command)
                 Divider()
-                Toggle("Auto-Play Next Episode", isOn: Binding(
+                Toggle("Continue Playing Up Next", isOn: Binding(
                     get: { app.autoPlayNextEpisodes },
                     set: { app.autoPlayNextEpisodes = $0 }
                 ))
+                Button("Clear Up Next") { app.queue.clearAll() }
+                    .disabled(app.queue.isEmpty)
             }
         }
 

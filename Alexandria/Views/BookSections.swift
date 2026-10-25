@@ -197,3 +197,21 @@ enum ExternalLinks {
         return comps?.url
     }
 }
+
+/// "Play Next" / "Play Later" for any menu offering a book or an episode.
+struct QueueMenuItems: View {
+    @Environment(AppState.self) private var app
+    let item: LibraryItem
+    var episode: PodcastEpisode? = nil
+
+    var body: some View {
+        if episode != nil || !item.isPodcast {
+            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
+                app.enqueue(item, episode: episode, next: true)
+            }
+            Button("Play Later", systemImage: "text.line.last.and.arrowtriangle.forward") {
+                app.enqueue(item, episode: episode, next: false)
+            }
+        }
+    }
+}
