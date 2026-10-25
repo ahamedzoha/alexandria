@@ -137,6 +137,25 @@ extension AppState {
         }.count
     }
 
+    /// The library on screen holds podcasts rather than books.
+    var isPodcastLibrary: Bool {
+        libraries.first { $0.id == selectedLibraryID }?.mediaType == "podcast"
+    }
+
+    /// What the library on screen holds: "book" or "show".
+    var mediaNoun: String { isPodcastLibrary ? "show" : "book" }
+
+    /// The library on screen has books to finish. A podcast library's items
+    /// are shows, which don't get finished, so the mosaic and the finished /
+    /// in-progress counts sit out.
+    var libraryHasBooks: Bool { items.contains { !$0.isPodcast } }
+
+    /// The last seven days of listening, in Alexandria and other apps.
+    func listeningWeek(endingAt now: Date = .now) -> [ListeningLog.Day] {
+        ListeningLog.week(endingAt: now, local: listening.days,
+                          server: serverListeningDays, serverItems: serverListeningItems)
+    }
+
     /// Library size — the true total from stats when available, else the loaded set.
     var libraryTotal: Int { stats?.totalItems ?? items.count }
 

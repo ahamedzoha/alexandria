@@ -10,11 +10,12 @@ import Foundation
 /// Pass an episode to play a podcast episode; nil keeps the book behavior for
 /// books and resolves podcasts to their resume-target episode (see
 /// `AppState.resumeEpisode(for:)`), so every item-level entry point works for
-/// podcasts unchanged. `onResult` fires on the main actor: true once the
-/// player has loaded, false when nothing playable was found (or the launch
-/// was superseded).
+/// podcasts unchanged. `startAt` begins at that position (a chapter picked
+/// in the detail sheet) instead of the saved one. `onResult` fires on the
+/// main actor: true once the player has loaded, false when nothing playable
+/// was found (or the launch was superseded).
 @MainActor
-func startPlayback(item: LibraryItem, episode: PodcastEpisode? = nil, app: AppState,
+func startPlayback(item: LibraryItem, episode: PodcastEpisode? = nil, startAt: Double? = nil, app: AppState,
                    player: PlayerEngine, onResult: ((Bool) -> Void)? = nil) {
     startPlaybackTask?.cancel()
     startPlaybackTask = Task {
@@ -30,7 +31,7 @@ func startPlayback(item: LibraryItem, episode: PodcastEpisode? = nil, app: AppSt
         let title = episode?.displayTitle ?? item.title
         let local = app.downloads.localSession(for: item.id, episodeID: episode?.id,
                                                serverProgress: app.progress(itemID: item.id, episodeID: episode?.id))
-        let info: PlaybackInfo
+        var info: PlaybackInfo
         let cover: URL?
         if let local {
             info = local
@@ -48,6 +49,10 @@ func startPlayback(item: LibraryItem, episode: PodcastEpisode? = nil, app: AppSt
         guard !Task.isCancelled else {
             onResult?(false)
             return
+        }
+        if let startAt {
+            info = PlaybackInfo(id: info.id, episodeId: info.episodeId, audioTracks: info.audioTracks,
+                                chapters: info.chapters, currentTime: startAt, duration: info.duration)
         }
         let loaded = player.load(session: info, itemID: item.id, episodeID: episode?.id,
                                  serverURL: app.serverURL, token: app.token,

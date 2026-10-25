@@ -2,10 +2,6 @@ import SwiftUI
 
 /// "3 books" / "3 shows" — browse cards describe whatever the selected
 /// library holds, not always books.
-private func countLabel(_ count: Int, noun: String) -> String {
-    "\(count) \(noun)\(count == 1 ? "" : "s")"
-}
-
 // MARK: - Series (stacked-cover cards)
 
 struct SeriesGridView: View {
@@ -13,10 +9,6 @@ struct SeriesGridView: View {
 
     // Covers fill their column, so the gutter is the only horizontal space.
     private let columns = [GridItem(.adaptive(minimum: 170, maximum: 220), spacing: Theme.Space.l)]
-
-    private var mediaNoun: String {
-        app.libraries.first { $0.id == app.selectedLibraryID }?.mediaType == "podcast" ? "show" : "book"
-    }
 
     private struct SeriesGroup: Identifiable {
         let id: String
@@ -55,10 +47,10 @@ struct SeriesGridView: View {
                                 app.showGroup(kind: .series, value: group.name)
                             } label: {
                                 SeriesCard(name: group.name, count: group.count,
-                                           coverIDs: group.coverItemIDs, noun: mediaNoun)
+                                           coverIDs: group.coverItemIDs, noun: app.mediaNoun)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("\(group.name), \(countLabel(group.count, noun: mediaNoun))")
+                            .accessibilityLabel("\(group.name), \(Format.count(group.count, app.mediaNoun))")
                         }
                     }
                     .padding(28)
@@ -105,7 +97,7 @@ struct SeriesCard: View {
             HStack(spacing: 6) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(name).font(Theme.Typography.cardTitle).lineLimit(1)
-                    Text(countLabel(count, noun: noun))
+                    Text(Format.count(count, noun))
                         .font(Theme.Typography.meta).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
@@ -129,10 +121,6 @@ struct PeopleGridView: View {
     let kind: AppState.Browse   // .authors or .narrators
 
     private let columns = [GridItem(.adaptive(minimum: 140, maximum: 180), spacing: 20)]
-
-    private var mediaNoun: String {
-        app.libraries.first { $0.id == app.selectedLibraryID }?.mediaType == "podcast" ? "show" : "book"
-    }
 
     private struct Person: Identifiable {
         let id: String           // name
@@ -175,10 +163,10 @@ struct PeopleGridView: View {
                                 app.showGroup(kind: kind, value: person.name)
                             } label: {
                                 PersonCard(name: person.name, count: person.count,
-                                           imageURL: person.imageURL, noun: mediaNoun)
+                                           imageURL: person.imageURL, noun: app.mediaNoun)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("\(person.name), \(countLabel(person.count, noun: mediaNoun))")
+                            .accessibilityLabel("\(person.name), \(Format.count(person.count, app.mediaNoun))")
                         }
                     }
                     .padding(28)
@@ -207,7 +195,7 @@ struct PersonCard: View {
             VStack(spacing: 2) {
                 Text(name).font(Theme.Typography.cardTitle)
                     .multilineTextAlignment(.center).lineLimit(2)
-                Text(countLabel(count, noun: noun))
+                Text(Format.count(count, noun))
                     .font(Theme.Typography.meta).foregroundStyle(.secondary)
             }
         }

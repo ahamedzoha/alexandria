@@ -22,6 +22,11 @@ enum Format {
             : String(format: "%d:%02d", m, s)
     }
 
+    /// "1 book", "12 shows".
+    static func count(_ count: Int, _ noun: String) -> String {
+        "\(count) \(noun)\(count == 1 ? "" : "s")"
+    }
+
     /// "3d ago" style; one shared formatter (creation isn't cheap).
     @MainActor
     static func relativeDate(_ date: Date) -> String {

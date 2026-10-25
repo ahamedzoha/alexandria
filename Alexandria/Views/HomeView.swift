@@ -38,10 +38,7 @@ struct HomeView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .sheet(item: $selected) { item in
-            ItemDetailView(item: item)
-                .frame(width: item.isPodcast ? 640 : 560, height: item.isPodcast ? 760 : 680)
-        }
+        .itemDetailSheet($selected)
         .task(id: app.selectedLibraryID) {
             await app.loadStats()
             await app.loadRecentItems()
@@ -184,7 +181,7 @@ struct HomeEmptyState: View {
 
             VStack(spacing: Theme.Space.l) {
                 Image(systemName: "books.vertical")
-                    .font(.system(size: 54))
+                    .font(Theme.Typography.emptyStateSymbol)
                     .foregroundStyle(.secondary)
                     .frame(width: 128, height: 128)
                     .background(

@@ -59,10 +59,7 @@ struct StatsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .sheet(item: $selectedItem) { item in
-            ItemDetailView(item: item)
-                .frame(width: item.isPodcast ? 640 : 560, height: item.isPodcast ? 760 : 680)
-        }
+        .itemDetailSheet($selectedItem)
         .task {
             loading = true
             await app.loadStats()
@@ -124,7 +121,7 @@ struct StatsView: View {
                 .foregroundStyle(.secondary)
             Text("Your Library")
                 .font(.largeTitle.bold())
-            Text("\(s.totalItems ?? app.items.count) books · \(hours) hours of audio — about \(days) days end to end.")
+            Text("\(Format.count(s.totalItems ?? app.items.count, app.mediaNoun)) · \(hours) hours of audio — about \(days) days end to end.")
                 .font(.title3)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
@@ -236,7 +233,7 @@ struct StatsView: View {
             Text("Nothing listened yet")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
-            Text("Press play on a book and your hours will chart here.")
+            Text("Press play on \(app.isPodcastLibrary ? "an episode" : "a book") and your hours will chart here.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

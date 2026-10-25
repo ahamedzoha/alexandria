@@ -28,8 +28,11 @@ enum Theme {
         static let cardTitle: Font = .subheadline.weight(.semibold)
         /// Secondary metadata lines (author, duration, counts).
         static let meta: Font = .caption
-        /// The Home hero heading.
-        static let heroTitle: Font = .largeTitle.weight(.bold)
+        /// Home's greeting — the app's one display size, a step above the
+        /// system's 26pt large title.
+        static let greeting: Font = .system(size: 34, weight: .bold)
+        /// The symbol over an empty state Alexandria draws itself.
+        static let emptyStateSymbol: Font = .system(size: 54)
     }
 
     /// A subtle elevation recipe (HIG: low opacity, small y offset).

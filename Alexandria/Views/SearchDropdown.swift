@@ -85,7 +85,7 @@ struct SearchDropdown: View {
         HStack(spacing: 8) {
             Image(systemName: "books.vertical")
                 .foregroundStyle(.tertiary)
-            Text("No books match “\(app.searchText)”")
+            Text("No \(app.mediaNoun)s match “\(app.searchText)”")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

@@ -1,42 +1,18 @@
 import SwiftUI
 
-/// Warm, personal home header: an editorial date eyebrow, a large-title greeting,
-/// and a supporting line — on the app background (no gradient banner). The
-/// library-completion ring is the single, localized spot of accent color.
+/// The empty Home's header: the greeting at the populated Home's size, with
+/// the date as context. (With a library, ListeningHeader takes over.)
 struct GreetingHeader: View {
-    @Environment(AppState.self) private var app
-
     var body: some View {
-        HStack(alignment: .center, spacing: Theme.Space.l) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(dateLine)
-                    .font(.subheadline.weight(.medium))
-                    .textCase(.uppercase)
-                    .foregroundStyle(.secondary)
-                Text(greeting)
-                    .font(Theme.Typography.heroTitle)
-                Text(app.heroContinue != nil ? "Pick up where you left off." : "Find your next listen.")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: Theme.Space.l)
-            // Ring only when there's a library to summarize (hidden on the empty
-            // state) — a 0/0 ring reads as an unfinished artifact.
-            if app.libraryTotal > 0 {
-                CompletionRing(progress: app.libraryCompletion,
-                               finished: app.finishedCount,
-                               total: app.libraryTotal)
-                    .frame(width: 116, height: 116)
-            }
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            Text(Self.greeting(at: .now))
+                .font(Theme.Typography.greeting)
+            Text("\(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())) · Find your next listen.")
+                .font(.title3)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-
-    private var dateLine: String {
-        Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())
-    }
-
-    private var greeting: String { Self.greeting(at: .now) }
 
     static func greeting(at date: Date) -> String {
         switch Calendar.current.component(.hour, from: date) {
@@ -44,48 +20,6 @@ struct GreetingHeader: View {
         case 12..<17: return "Good afternoon"
         default: return "Good evening"
         }
-    }
-}
-
-/// Trimmed-circle completion ring with animated fill (Reduce-Motion aware).
-/// Recolored for the neutral app background: a subtle semantic track, an accent
-/// fill, and semantic numerals (no more white-on-gradient).
-struct CompletionRing: View {
-    let progress: Double
-    let finished: Int
-    let total: Int
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var animatedTo: Double = 0
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.primary.opacity(0.10), lineWidth: 9)   // adaptive track
-            Circle()
-                .trim(from: 0, to: animatedTo)
-                .stroke(
-                    LinearGradient(colors: [.accentColor, .accentColor.opacity(0.7)],
-                                   startPoint: .top, endPoint: .bottom),
-                    style: StrokeStyle(lineWidth: 9, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 1) {
-                Text("\(Int(progress * 100))%")
-                    .font(.system(.title2, design: .rounded).weight(.bold))
-                    .contentTransition(.numericText())               // inherits .primary
-                Text("\(finished)/\(total)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .onAppear {
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.8)) { animatedTo = progress }
-        }
-        .onChange(of: progress) { _, newValue in
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.6)) { animatedTo = newValue }
-        }
-        .accessibilityElement()
-        .accessibilityLabel("Library \(Int(progress * 100)) percent complete, \(finished) of \(total) finished")
     }
 }
 

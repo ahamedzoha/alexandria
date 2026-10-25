@@ -292,7 +292,7 @@ struct ItemDetailView: View {
                     .buttonStyle(.plain)
 
                     if chaptersExpanded {
-                        // Click-to-jump only when this book is the one loaded.
+                        // Click to jump; a book that isn't loaded starts there.
                         let isLoaded = player.itemID == item.id
                         let current = isLoaded ? player.currentChapterIndex : nil
                         LazyVStack(spacing: 2) {
@@ -303,7 +303,13 @@ struct ItemDetailView: View {
                                            start: start,
                                            isCurrent: index == current,
                                            isPlayed: current.map { index < $0 } ?? false,
-                                           onSelect: isLoaded ? { player.seek(to: start) } : nil)
+                                           onSelect: {
+                                               if isLoaded {
+                                                   player.seek(to: start)
+                                               } else {
+                                                   startPlayback(item: item, startAt: start, app: app, player: player)
+                                               }
+                                           })
                             }
                         }
                         .padding(.horizontal, 4)
@@ -364,4 +370,16 @@ struct ItemDetailView: View {
         .background(.bar)
     }
 
+}
+
+extension View {
+    /// Presents a book's or show's details: the one sheet every surface uses,
+    /// sized for its content — a show's episode list gets more room.
+    func itemDetailSheet(_ item: Binding<LibraryItem?>) -> some View {
+        sheet(item: item) { item in
+            let size = item.isPodcast ? CGSize(width: 640, height: 760) : CGSize(width: 560, height: 680)
+            ItemDetailView(item: item)
+                .frame(width: size.width, height: size.height)
+        }
+    }
 }

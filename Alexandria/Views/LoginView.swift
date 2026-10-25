@@ -25,7 +25,8 @@ struct LoginView: View {
     @FocusState private var focus: Field?
     private enum Field: Hashable { case server, name, username, password }
 
-    // Unchanged gating contract: server URL + username required, never while loading.
+    // Server URL + username required, never while loading. The password
+    // isn't: audiobookshelf allows accounts without one.
     private var canConnect: Bool { !server.isEmpty && !username.isEmpty && !app.isLoading }
 
     var body: some View {
@@ -181,7 +182,7 @@ struct LoginView: View {
                     .onSubmit(connect)
             }
             labeledField("Password") {
-                SecureField("Password", text: $password, prompt: Text("Required"))
+                SecureField("Password", text: $password, prompt: Text("Your password"))
                     .textContentType(.password)
                     .focused($focus, equals: .password)
                     .onSubmit(connect)

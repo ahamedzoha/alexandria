@@ -24,14 +24,16 @@ struct CompactGreeting: View {
 
     private var capsule: some View {
         HStack(spacing: Theme.Space.s) {
-            ZStack {
-                Circle().stroke(Color.primary.opacity(0.15), lineWidth: 2.5)
-                Circle()
-                    .trim(from: 0, to: app.libraryCompletion)
-                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
+            if app.libraryHasBooks {
+                ZStack {
+                    Circle().stroke(Color.primary.opacity(0.15), lineWidth: 2.5)
+                    Circle()
+                        .trim(from: 0, to: app.libraryCompletion)
+                        .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+                .frame(width: 20, height: 20)
             }
-            .frame(width: 20, height: 20)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(GreetingHeader.greeting(at: .now))
@@ -39,9 +41,11 @@ struct CompactGreeting: View {
                 // Symbols keep three stats inside the room left of the search
                 // field; the words live in the tooltip and VoiceOver label.
                 HStack(spacing: Theme.Space.s) {
-                    Label(hoursText, systemImage: "headphones")
-                    Label("\(app.finishedCount)", systemImage: "checkmark.circle")
-                    Label("\(app.inProgressCount)", systemImage: "play.circle")
+                    Label(weekText, systemImage: "headphones")
+                    if app.libraryHasBooks {
+                        Label("\(app.finishedCount)", systemImage: "checkmark.circle")
+                        Label("\(app.inProgressCount)", systemImage: "play.circle")
+                    }
                 }
                 .labelStyle(CompactStatLabel())
                 .font(.caption)
@@ -49,7 +53,7 @@ struct CompactGreeting: View {
             }
             .lineLimit(1)
         }
-        .padding(.leading, 8)
+        .padding(.leading, app.libraryHasBooks ? 8 : 12)
         .padding(.trailing, 12)
         .frame(height: 36)
         .glassEffect(.regular, in: .capsule)
@@ -59,15 +63,17 @@ struct CompactGreeting: View {
         .accessibilityLabel("\(GreetingHeader.greeting(at: .now)). \(fullStats)")
     }
 
-    private var hoursText: String {
-        let h = app.listenedHours
-        return String(format: h < 10 ? "%.1fh" : "%.0fh", h)
+    /// This week's listening — the figure the page header leads with.
+    private var weekSeconds: Double {
+        app.listeningWeek().reduce(0) { $0 + $1.seconds }
     }
 
+    private var weekText: String { weekSeconds < 60 ? "0m" : Format.duration(weekSeconds) }
+
     private var fullStats: String {
-        let h = app.listenedHours
-        let hours = String(format: h < 10 ? "%.1f" : "%.0f", h)
-        return "\(hours) hours listened · \(app.finishedCount) finished · \(app.inProgressCount) in progress · \(Int(app.libraryCompletion * 100))% of the library"
+        let week = "\(durationString(weekSeconds) ?? "Nothing") listened this week"
+        guard app.libraryHasBooks else { return week }
+        return "\(week) · \(app.finishedCount) finished · \(app.inProgressCount) in progress · \(Int(app.libraryCompletion * 100))% of the library"
     }
 }
 

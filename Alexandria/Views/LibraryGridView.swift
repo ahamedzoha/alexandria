@@ -11,9 +11,6 @@ struct LibraryGridView: View {
     // Cover wall: tight gutters so the artwork reads as one continuous surface.
     private let columns = [GridItem(.adaptive(minimum: 160, maximum: 200), spacing: Theme.Space.s)]
 
-    private var isPodcastLibrary: Bool {
-        app.libraries.first { $0.id == app.selectedLibraryID }?.mediaType == "podcast"
-    }
 
     var body: some View {
         Group {
@@ -34,7 +31,7 @@ struct LibraryGridView: View {
                     ContentUnavailableView {
                         Label("Nothing on this shelf yet", systemImage: "books.vertical")
                     } description: {
-                        Text("When your server finishes scanning, your \(isPodcastLibrary ? "shows" : "books") land here — ready to play.")
+                        Text("When your server finishes scanning, your \(app.isPodcastLibrary ? "shows" : "books") land here — ready to play.")
                     } actions: {
                         Button("Refresh Library") { Task { await app.loadLibraries() } }
                             .buttonStyle(.borderedProminent)
@@ -53,10 +50,7 @@ struct LibraryGridView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .sheet(item: $selected) { item in
-            ItemDetailView(item: item)
-                .frame(width: item.isPodcast ? 640 : 560, height: item.isPodcast ? 760 : 680)
-        }
+        .itemDetailSheet($selected)
     }
 
     private var gridView: some View {
@@ -91,7 +85,7 @@ struct LibraryGridView: View {
                 }
             }
             TableColumn("Author") { item in Text(item.author).lineLimit(1) }
-            if isPodcastLibrary {
+            if app.isPodcastLibrary {
                 // Podcasts have no narrator/duration; the episode count is the
                 // useful shape-of-the-show number.
                 TableColumn("Episodes") { item in

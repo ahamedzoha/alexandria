@@ -163,10 +163,7 @@ struct MainView: View {
         } message: { failure in
             Text(failure.message)
         }
-        .sheet(item: $searchSelection) { item in
-            ItemDetailView(item: item)
-                .frame(width: item.isPodcast ? 640 : 560, height: item.isPodcast ? 760 : 680)
-        }
+        .itemDetailSheet($searchSelection)
     }
 
     // Shows the global search results dropdown on non-library pages. On the
@@ -243,7 +240,6 @@ struct MainView: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-                .font(.system(size: 13))
             SearchField(
                 text: Binding(get: { app.searchText }, set: { app.searchText = $0 }),
                 placeholder: "Search library",

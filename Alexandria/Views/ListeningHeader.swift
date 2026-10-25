@@ -32,21 +32,18 @@ struct ListeningHeader: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        let week = ListeningLog.week(endingAt: now, local: app.listening.days,
-                                     server: app.serverListeningDays, serverItems: app.serverListeningItems)
+        let week = app.listeningWeek(endingAt: now)
         HStack(alignment: .top, spacing: Theme.Space.xl) {
             VStack(alignment: .leading, spacing: Theme.Space.l + 4) {
                 VStack(alignment: .leading, spacing: Theme.Space.s) {
                     Text(GreetingHeader.greeting(at: now))
-                        .font(.system(size: 34, weight: .bold))
+                        .font(Theme.Typography.greeting)
                     summary(now: now, week: week)
                 }
                 ListeningDiary(week: week, entered: entered, title: title(for:), onOpen: open)
             }
             Spacer(minLength: Theme.Space.l)
-            // Books only: a podcast library's items are shows, which don't
-            // get finished.
-            if app.items.contains(where: { !$0.isPodcast }) {
+            if app.libraryHasBooks {
                 LibraryMosaic(entered: entered, onOpen: onOpen)
             }
         }
