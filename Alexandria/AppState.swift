@@ -110,6 +110,20 @@ final class AppState {
     let queue = PlaybackQueue()
     /// Seconds played per day in Alexandria (Home's week).
     let listening = ListeningLog()
+
+    /// The server playback session for what's streaming (downloads play
+    /// without one). Listening is reported on it every progress tick and it
+    /// is closed when playback moves on, so the server's listening stats —
+    /// and every other client's view of them — include Alexandria.
+    private struct OpenSession {
+        let id: String
+        let key: ProgressKey
+        let api: APIClient          // bound to the session's server
+        var unsynced: Double = 0    // listened seconds not yet reported
+        var lastTime: Double = 0
+        var duration: Double = 0
+    }
+    @ObservationIgnored private var openSession: OpenSession?
     /// Per-day listening from the server's stats (other clients' sessions).
     var serverListeningDays: [String: Double] = [:]
     /// Day → item → seconds, from the server's recent sessions (which book).
@@ -121,6 +135,11 @@ final class AppState {
     @ObservationIgnored private var itemsByID: [String: LibraryItem] = [:]
     // In-flight server progress write per (item, episode) — see enqueueProgressPatch.
     @ObservationIgnored private var progressPatchTasks: [ProgressKey: Task<Void, Never>] = [:]
+    private func activeServerWillChange() {
+        onActiveServerWillChange?()   // stops the player (its last report still goes out)
+        closeOpenSession()
+    }
+
     /// Called just before the active server changes (switch, logout, adding
     /// another server) so the player can stop while its final position
     /// report still goes to the server the item belongs to.
@@ -346,7 +365,7 @@ final class AppState {
             let id = UUID().uuidString
             let existing = servers.first(where: { $0.url == cleaned })
             // Signing in again to the active server keeps what's playing.
-            if let active = activeServerID, active != (existing?.id ?? id) { onActiveServerWillChange?() }
+            if let active = activeServerID, active != (existing?.id ?? id) { activeServerWillChange() }
             // Reuse an existing server for the same URL instead of duplicating it.
             if let existing {
                 UserDefaults.standard.set(t, forKey: tokenKey(existing.id))
@@ -375,7 +394,7 @@ final class AppState {
 
     func switchServer(_ id: String) async {
         guard id != activeServerID, servers.contains(where: { $0.id == id }) else { return }
-        onActiveServerWillChange?()
+        activeServerWillChange()
         activeServerID = id
         persistServers()
         CoverCache.shared.authToken = token
@@ -387,7 +406,7 @@ final class AppState {
     func removeServer(_ id: String) {
         let wasActive = activeServerID == id
         // Stop first: the final position report needs the token we're about to drop.
-        if wasActive { onActiveServerWillChange?() }
+        if wasActive { activeServerWillChange() }
         UserDefaults.standard.removeObject(forKey: tokenKey(id))
         servers.removeAll { $0.id == id }
         downloads.dropPending(serverID: id)
@@ -707,6 +726,48 @@ final class AppState {
         return author
     }
 
+    // MARK: Playback sessions
+
+    /// Playback moved to a new session (nil for a download): close the
+    /// previous one with whatever it hadn't reported yet.
+    func sessionStarted(id: String?, itemID: String, episodeID: String?) {
+        closeOpenSession()
+        guard let id else { return }
+        openSession = OpenSession(id: id, key: ProgressKey(itemID: itemID, episodeID: episodeID), api: api)
+    }
+
+    /// Played seconds from the player: into the diary, and owed to the open
+    /// session if it's the one playing.
+    func noteListening(_ seconds: Double, itemID: String) {
+        listening.add(seconds, itemID: itemID)
+        if openSession?.key.itemID == itemID { openSession?.unsynced += seconds }
+    }
+
+    private func syncOpenSession(key: ProgressKey, time: Double, duration: Double) {
+        guard var session = openSession, session.key == key else { return }
+        session.lastTime = time
+        session.duration = duration
+        let sent = session.unsynced
+        openSession = session
+        guard sent > 0 else { return }
+        let sync = SessionSync(currentTime: time, timeListened: sent, duration: duration)
+        let id = session.id, api = session.api
+        Task { [weak self] in
+            // Only what this sync carried is cleared; a failed sync stays owed.
+            guard (try? await api.syncSession(id: id, sync)) != nil, let self, self.openSession?.id == id else { return }
+            self.openSession?.unsynced -= sent
+        }
+    }
+
+    /// Close the open session (logout, server switch, new playback).
+    func closeOpenSession() {
+        guard let session = openSession else { return }
+        openSession = nil
+        let sync = SessionSync(currentTime: session.lastTime, timeListened: max(0, session.unsynced),
+                               duration: session.duration)
+        Task { try? await session.api.closeSession(id: session.id, sync) }
+    }
+
     /// A diary entry's title: the loaded library, the shows behind Continue
     /// Listening episodes, items looked up earlier, then what the server's
     /// sessions or a lookup supplied.
@@ -717,17 +778,25 @@ final class AppState {
             ?? (extra ?? serverListeningTitles)[id]
     }
 
+    /// Other clients' listening, per day and per book, from the server's
+    /// sessions list. Alexandria's own sessions are left out: everything it
+    /// plays is already in the local log, so counting them would double it.
     func loadListeningStats() async {
         let server = activeServerID
-        guard let stats = try? await api.listeningStats(), activeServerID == server else { return }
-        serverListeningDays = stats.days ?? [:]
+        guard let sessions = try? await api.listeningSessions(), activeServerID == server else { return }
+        var days: [String: Double] = [:]
         var items: [String: [String: Double]] = [:]
         var titles: [String: String] = [:]
-        for session in stats.recentSessions ?? [] {
-            guard let id = session.libraryItemId, let day = session.date else { continue }
-            items[day, default: [:]][id, default: 0] += session.timeListening ?? 0
-            if let title = session.bookTitle { titles[id] = title }
+        for session in sessions where !session.isAlexandria {
+            guard let day = session.date else { continue }
+            let seconds = session.timeListening ?? 0
+            days[day, default: 0] += seconds
+            if let id = session.libraryItemId {
+                items[day, default: [:]][id, default: 0] += seconds
+                if let title = session.bookTitle { titles[id] = title }
+            }
         }
+        serverListeningDays = days
         serverListeningItems = items
         // Name anything in the diary that's outside the loaded library (a
         // podcast while a book library is selected): one lookup each, cached.
@@ -808,6 +877,7 @@ final class AppState {
         // position still belongs to (and goes to) the server it came from.
         let api = self.api
         let server = activeServerID
+        syncOpenSession(key: key, time: time, duration: duration)
         enqueueProgressPatch(for: key) { [weak self] in
             guard let self else { return }
             let sentAt = Date().timeIntervalSince1970 * 1000

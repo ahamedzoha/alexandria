@@ -49,6 +49,10 @@ final class CoverCache {
 
     // MARK: Disk + network (runs off the main actor)
 
+    /// A disk copy older than this is refetched (a cover changed on the
+    /// server shows up within a week); if the refetch fails, the old copy is used.
+    private nonisolated static let diskLifetime: TimeInterval = 7 * 86_400
+
     private nonisolated static func fetch(_ url: URL, token: String?) async -> NSImage? {
         // Local (downloaded) cover files are already on disk — just decode.
         if url.isFileURL {
@@ -56,15 +60,29 @@ final class CoverCache {
         }
 
         let file = diskFile(for: url)
+        var stale: NSImage?
         if let file, let data = try? Data(contentsOf: file), let image = NSImage(data: data) {
-            return image
+            let written = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            if let written, Date().timeIntervalSince(written) < diskLifetime { return image }
+            stale = image
         }
 
         var req = URLRequest(url: url)
+        // An unreachable server fails fast instead of holding a cover for minutes.
+        req.timeoutInterval = 15
         if let token, !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        // Retry a few times — self-hosted servers drop bursts of parallel requests.
+        // At most a handful in flight: self-hosted servers drop bursts of
+        // parallel requests (a full grid asks for hundreds at once).
+        await FetchGate.shared.acquire()
+        let fetched = await download(req, to: file)
+        await FetchGate.shared.release()
+        return fetched ?? stale
+    }
+
+    private nonisolated static func download(_ req: URLRequest, to file: URL?) async -> NSImage? {
+        // Retry a couple of times — a dropped request is common under load.
         for attempt in 0..<3 {
             do {
                 let (data, response) = try await URLSession.shared.data(for: req)
@@ -72,9 +90,11 @@ final class CoverCache {
                     throw URLError(.badServerResponse)
                 }
                 if let image = NSImage(data: data) {
-                    if let file { try? data.write(to: file) }
+                    if let file { try? data.write(to: file, options: .atomic) }
                     return image
                 }
+            } catch let error as URLError where error.code == .timedOut || error.code == .cannotConnectToHost {
+                return nil   // the server isn't there; retrying only delays the fallback
             } catch {
                 // fall through and retry
             }
@@ -104,5 +124,32 @@ final class CoverCache {
         let kept = items.filter { $0.name != "token" }
         comps.queryItems = kept.isEmpty ? nil : kept
         return comps.url?.absoluteString ?? url.absoluteString
+    }
+}
+
+/// Limits concurrent cover downloads.
+actor FetchGate {
+    static let shared = FetchGate(limit: 6)
+
+    private let limit: Int
+    private var running = 0
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    init(limit: Int) { self.limit = limit }
+
+    func acquire() async {
+        if running < limit {
+            running += 1
+            return
+        }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func release() {
+        if waiting.isEmpty {
+            running -= 1
+        } else {
+            waiting.removeFirst().resume()   // the slot passes straight on
+        }
     }
 }

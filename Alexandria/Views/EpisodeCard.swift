@@ -54,18 +54,7 @@ struct EpisodeCard: View {
 
                 // Non-interactive affordance — the cover button underneath plays.
                 if hovering {
-                    RoundedRectangle(cornerRadius: Theme.Radius.cover, style: .continuous)
-                        .fill(.black.opacity(0.38))
-                        .allowsHitTesting(false)
-                        .transition(.opacity)
-
-                    Image(systemName: "play.fill")
-                        .font(.title2)
-                        .foregroundStyle(.white)
-                        .frame(width: 54, height: 54)
-                        .background(.black.opacity(0.55), in: Circle())
-                        .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1.5))
-                        .shadow(radius: 6)
+                    CoverPlayGlyph()
                         .allowsHitTesting(false)
                         .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                 }
@@ -109,19 +98,7 @@ struct EpisodeCard: View {
 
     @ViewBuilder private var progressBar: some View {
         if let progress, progress.fraction > 0.001, !progress.isFinished {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.black.opacity(0.5))
-                    Capsule()
-                        .fill(LinearGradient(
-                            colors: [Color.accentColor, Color.accentColor.opacity(0.7)],
-                            startPoint: .leading, endPoint: .trailing))
-                        .frame(width: max(4, geo.size.width * progress.fraction))
-                }
-            }
-            .frame(height: 5)
-            .padding(.horizontal, 8)
-            .padding(.bottom, 8)
+            CoverProgressEdge(fraction: progress.fraction)
         }
     }
 

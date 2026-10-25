@@ -29,7 +29,10 @@ struct ItemDetailView: View {
             }
         }
         .background(background)
-        .overlay(alignment: .topTrailing) { closeButton }
+        // A Mac sheet ends in a bar with its dismiss button (as Add Server
+        // does), not a floating iOS-style ✕. Esc still closes it.
+        .safeAreaInset(edge: .bottom, spacing: 0) { doneBar }
+        .onExitCommand { dismiss() }
         .task {
             if item.isPodcast {
                 await app.loadEpisodes(itemID: item.id)
@@ -252,15 +255,10 @@ struct ItemDetailView: View {
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(.quaternary)
-                        Capsule()
-                            .fill(progress.isFinished ? Color.green : Color.accentColor)
-                            .frame(width: max(4, geo.size.width * progress.fraction))
-                    }
-                }
-                .frame(height: 6)
+                ProgressView(value: min(1, max(0, progress.fraction)))
+                    .progressViewStyle(.linear)
+                    .tint(progress.isFinished ? Color.green : Color.accentColor)
+                    .accessibilityHidden(true)
                 if !progress.isFinished, let duration = detail?.media?.duration ?? item.duration {
                     Text("\(durationString(duration * (1 - progress.fraction)) ?? "") remaining")
                         .font(.caption).foregroundStyle(.secondary)
@@ -351,19 +349,19 @@ struct ItemDetailView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    private var closeButton: some View {
-        Button { dismiss() } label: {
-            Image(systemName: "xmark")
-                .font(.callout.weight(.bold))
-                .foregroundStyle(.primary)
-                .frame(width: 30, height: 30)
-                .contentShape(Circle())   // the whole glass circle clicks, not just the ✕
-                .navGlassCircle()
+    private var doneBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+                    .controlSize(.large)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
         }
-        .buttonStyle(.plain)
-        .keyboardShortcut(.cancelAction)
-        .help("Close")
-        .padding(14)
+        .background(.bar)
     }
 
 }

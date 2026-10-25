@@ -98,8 +98,10 @@ private struct NavGlassModifier: ViewModifier {
 }
 
 extension View {
-    /// Shared hover treatment for clickable cards: scale + shadow lift,
-    /// pointing-hand cursor, and Reduce-Motion awareness.
+    /// Shared hover treatment for clickable cards: scale + shadow lift, with
+    /// Reduce-Motion awareness. No pointing-hand cursor: that's a web
+    /// convention Mac apps don't use on cards, and NSCursor push/pop came
+    /// unbalanced whenever a hovered card vanished (the hand stuck).
     func hoverLift() -> some View {
         modifier(HoverLift())
     }
@@ -128,9 +130,6 @@ private struct HoverLift: ViewModifier {
             .scaleEffect(hovering && !reduceMotion ? 1.03 : 1)
             .shadow(color: elevation.color, radius: elevation.radius, y: elevation.y)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: hovering)
-            .onHover { inside in
-                hovering = inside
-                if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-            }
+            .onHover { hovering = $0 }
     }
 }

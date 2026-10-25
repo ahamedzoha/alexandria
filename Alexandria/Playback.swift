@@ -55,6 +55,8 @@ func startPlayback(item: LibraryItem, episode: PodcastEpisode? = nil, app: AppSt
                                  author: episode == nil ? item.author : item.title,
                                  cover: cover)
         if loaded {
+            // A download plays without a server session.
+            app.sessionStarted(id: local == nil ? info.id : nil, itemID: item.id, episodeID: episode?.id)
             await app.playbackStarted(item: item, episode: episode)
         } else {
             app.presentFailure("Couldn't Play “\(title)”",

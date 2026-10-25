@@ -101,8 +101,27 @@ struct APIClient: Sendable {
         return token
     }
 
-    func listeningStats() async throws -> ListeningStats {
-        try await send(try request("api/me/listening-stats"), as: ListeningStats.self)
+    /// The most recent sessions, from every client.
+    func listeningSessions(itemsPerPage: Int = 200) async throws -> [ListeningStats.Session] {
+        var req = try request("api/me/listening-sessions")
+        if let url = req.url, var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            comps.queryItems = [URLQueryItem(name: "itemsPerPage", value: String(itemsPerPage)),
+                                URLQueryItem(name: "page", value: "0")]
+            if let u = comps.url { req.url = u }
+        }
+        return try await send(req, as: ListeningSessionsPage.self).sessions ?? []
+    }
+
+    /// Report listening on an open playback session — how far, and how long
+    /// was actually listened — so the server's stats include Alexandria.
+    func syncSession(id: String, _ sync: SessionSync) async throws {
+        let req = try request("api/session/\(id)/sync", method: "POST", body: try JSONEncoder().encode(sync))
+        _ = try await validatedData(for: req)
+    }
+
+    func closeSession(id: String, _ sync: SessionSync) async throws {
+        let req = try request("api/session/\(id)/close", method: "POST", body: try JSONEncoder().encode(sync))
+        _ = try await validatedData(for: req)
     }
 
     func libraries() async throws -> [Library] {

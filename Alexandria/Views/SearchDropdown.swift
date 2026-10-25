@@ -188,11 +188,7 @@ private struct SearchResultRow: View {
 
     // Compact cover-play affordance — the small-space cousin of the grid's.
     private var playButton: some View {
-        Image(systemName: "play.fill")
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(.white)
-            .frame(width: 20, height: 20)
-            .background(.black.opacity(0.5), in: Circle())
+        CoverPlayGlyph(size: 20)
     }
 
     @ViewBuilder private var progressBadge: some View {

@@ -71,7 +71,9 @@ final class PaletteStore {
     /// Insertion order for simple FIFO eviction once `cache` passes the cap.
     private var order: [URL] = []
     /// In-flight extractions keyed by URL, so a burst of requests shares one task.
-    private var inFlight: [URL: Task<ArtworkPalette?, Never>] = [:]
+    /// In-flight lookups. `nil` palette with `imageLoaded == false` means the
+    /// cover itself didn't load (a network blip) — that isn't cached.
+    private var inFlight: [URL: Task<(palette: ArtworkPalette?, imageLoaded: Bool), Never>] = [:]
 
     private static let capacity = 200
 
@@ -93,23 +95,24 @@ final class PaletteStore {
         if let hit = cache[url] { return hit == .neutral ? nil : hit }
 
         if let existing = inFlight[url] {
-            return await existing.value
+            return await existing.value.palette
         }
-        let task = Task { () -> ArtworkPalette? in
-            guard let image = await CoverCache.shared.image(for: url),
-                  let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
-            else { return nil }
-            return await Task.detached(priority: .utility) {
+        let task = Task { () -> (palette: ArtworkPalette?, imageLoaded: Bool) in
+            guard let image = await CoverCache.shared.image(for: url) else { return (nil, false) }
+            guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return (nil, true) }
+            let palette = await Task.detached(priority: .utility) {
                 Self.extract(from: cgImage)
             }.value
+            return (palette, true)
         }
         inFlight[url] = task
-        let palette = await task.value
+        let outcome = await task.value
         inFlight[url] = nil
-        // Cache failures too, so covers that can't produce a palette aren't
-        // re-decoded on every appearance.
-        store(palette ?? .neutral, for: url)
-        return palette
+        // Cache extraction failures, so a cover that can't produce a palette
+        // isn't re-decoded on every appearance — but not a cover that simply
+        // didn't load: that was a network blip, and the next look should retry.
+        if outcome.imageLoaded { store(outcome.palette ?? .neutral, for: url) }
+        return outcome.palette
     }
 
     private func store(_ palette: ArtworkPalette, for url: URL) {

@@ -167,13 +167,14 @@ final class DownloadStore {
             var tracks: [DownloadedTrack] = []
             for (i, track) in sorted.enumerated() {
                 guard let content = track.contentUrl,
-                      let url = resolveURL(content, serverURL: serverURL, token: token) else {
+                      let request = trackRequest(content, serverURL: serverURL, token: token),
+                      let url = request.url else {
                     // Skipping it would save a book with a hole in it.
                     throw APIError(message: "Track \(i + 1) has no downloadable file.")
                 }
                 let ext = url.pathExtension.isEmpty ? "mp3" : url.pathExtension
                 let dest = dir.appendingPathComponent("\(i).\(ext)")
-                let (tmp, response) = try await URLSession.shared.download(from: url)
+                let (tmp, response) = try await URLSession.shared.download(for: request)
                 if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                     throw APIError(message: "Server returned error \(http.statusCode) for track \(i + 1).")
                 }
@@ -350,22 +351,31 @@ final class DownloadStore {
 
     // MARK: Storage
 
-    private func resolveURL(_ content: String, serverURL: String, token: String?) -> URL? {
+    /// A track download that authenticates with a Bearer header, keeping the
+    /// token out of the URL (and so out of proxy and server access logs).
+    /// Only HLS segment paths, which can't carry headers through every hop,
+    /// keep `?token=` — the same rule the player follows.
+    nonisolated static func trackRequest(_ content: String, serverURL: String, token: String?) -> URLRequest? {
         var absolute = content
         if content.hasPrefix("/") {
             let base = serverURL.hasSuffix("/") ? String(serverURL.dropLast()) : serverURL
             absolute = base + content
         }
         guard var comps = URLComponents(string: absolute) else { return nil }
-        if let token, !token.isEmpty {
-            let hasToken = comps.queryItems?.contains { $0.name == "token" } ?? false
-            if !hasToken {
-                var q = comps.queryItems ?? []
-                q.append(URLQueryItem(name: "token", value: token))
-                comps.queryItems = q
-            }
+        let isHLS = comps.path.contains("/hls/")
+        if isHLS, let token, !token.isEmpty, !(comps.queryItems?.contains { $0.name == "token" } ?? false) {
+            comps.queryItems = (comps.queryItems ?? []) + [URLQueryItem(name: "token", value: token)]
         }
-        return comps.url
+        guard let url = comps.url else { return nil }
+        var request = URLRequest(url: url)
+        if !isHLS, let token, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
+    private func trackRequest(_ content: String, serverURL: String, token: String?) -> URLRequest? {
+        Self.trackRequest(content, serverURL: serverURL, token: token)
     }
 
     private func audioDir(_ itemID: String) -> URL {

@@ -84,11 +84,28 @@ struct LibraryItem: Codable, Identifiable, Sendable, Hashable {   // Codable: Up
 
 // MARK: - Playback
 
+/// This install's identity in the server's sessions (its "Devices" list and
+/// listening stats): a per-install id, not one shared by every Mac.
+enum DeviceIdentity {
+    static let clientName = "Alexandria"
+
+    static var id: String {
+        if let existing = UserDefaults.standard.string(forKey: "deviceId") { return existing }
+        let fresh = UUID().uuidString
+        UserDefaults.standard.set(fresh, forKey: "deviceId")
+        return fresh
+    }
+
+    static var version: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+    }
+}
+
 struct PlayRequest: Encodable, Sendable {
     struct DeviceInfo: Encodable, Sendable {
-        let clientName = "Alexandria"
-        let clientVersion = "0.1"
-        let deviceId = "alexandria-mac"
+        let clientName = DeviceIdentity.clientName
+        let clientVersion = DeviceIdentity.version
+        let deviceId = DeviceIdentity.id
     }
     let deviceInfo = DeviceInfo()
     let mediaPlayer = "AVPlayer"
@@ -226,10 +243,8 @@ struct LibraryStats: Decodable, Sendable {
     }
 }
 
-/// GET /api/me/listening-stats — only the per-day totals are used.
-struct ListeningStats: Decodable, Sendable {
-    let days: [String: Double]?   // "yyyy-MM-dd" → seconds (clients that sync sessions)
-    let recentSessions: [Session]?
+/// Namespace for listening-session shapes (GET /api/me/listening-sessions).
+enum ListeningStats {
 
     /// A recent listening session — which book, which day, how long.
     struct Session: Decodable, Sendable {
@@ -238,6 +253,12 @@ struct ListeningStats: Decodable, Sendable {
         let timeListening: Double?
         let mediaType: String?        // "book" | "podcast"
         let displayTitle: String?
+        let deviceInfo: Device?
+
+        struct Device: Decodable, Sendable { let clientName: String? }
+
+        /// Alexandria's own sessions: already in the local listening log.
+        var isAlexandria: Bool { deviceInfo?.clientName == DeviceIdentity.clientName }
 
         /// The library item's title — books only. For a podcast session the
         /// server reports the *episode* title in every title field (observed:
@@ -245,6 +266,18 @@ struct ListeningStats: Decodable, Sendable {
         /// show's, and the diary credits listening to the show.
         var bookTitle: String? { mediaType == "podcast" ? nil : displayTitle }
     }
+}
+
+/// GET /api/me/listening-sessions — newest first, with the client that played.
+struct ListeningSessionsPage: Decodable, Sendable {
+    let sessions: [ListeningStats.Session]?
+}
+
+/// POST /api/session/{id}/sync and /close.
+struct SessionSync: Encodable, Sendable {
+    let currentTime: Double
+    let timeListened: Double   // seconds actually listened since the last sync
+    let duration: Double
 }
 
 // MARK: - Me / progress

@@ -33,7 +33,10 @@ if [ -z "$VERSION" ]; then
     | awk -F' = ' '/ MARKETING_VERSION /{print $2; exit}')"
 fi
 VERSION="${VERSION#v}"
-: "${VERSION:=0.0.0}"
+if [ -z "$VERSION" ]; then
+  echo "✗ Couldn't read MARKETING_VERSION from the project (and none was passed)." >&2
+  exit 1
+fi
 
 # Build number (CFBundleVersion). Sparkle compares the appcast's
 # sparkle:version against the INSTALLED app's CFBundleVersion, so the appcast
@@ -42,7 +45,13 @@ VERSION="${VERSION#v}"
 # what's installed and Sparkle silently never offers it.
 BUILD_NUMBER="$(xcodebuild -scheme "$SCHEME" -showBuildSettings 2>/dev/null \
   | awk -F' = ' '/ CURRENT_PROJECT_VERSION /{print $2; exit}')"
-: "${BUILD_NUMBER:=1}"
+# No silent fallback: a guessed build number in the appcast means Sparkle
+# compares against the wrong value and the update is never offered.
+case "$BUILD_NUMBER" in
+  ''|*[!0-9]*)
+    echo "✗ Couldn't read a numeric CURRENT_PROJECT_VERSION (got '$BUILD_NUMBER')." >&2
+    exit 1 ;;
+esac
 
 echo "▸ Packaging $APP $VERSION"
 rm -rf "$BUILD_DIR"
@@ -95,8 +104,14 @@ echo "✓ $DMG"
 # secret exported from `generate_keys -x`). If neither is available the DMG is
 # still produced — it just won't auto-update, and a warning is printed.
 echo "▸ Signing update for Sparkle…"
-SPARKLE_BIN="$(find "$HOME/Library/Developer/Xcode/DerivedData" \
+# This project's own resolved Sparkle first: the first sign_update anywhere in
+# DerivedData could belong to another project's (older) Sparkle.
+SPARKLE_BIN="$(find "$HOME/Library/Developer/Xcode/DerivedData"/"$APP"-* \
   -path "*artifacts*sparkle*" -name sign_update -print -quit 2>/dev/null | xargs dirname 2>/dev/null || true)"
+if [ -z "$SPARKLE_BIN" ]; then
+  SPARKLE_BIN="$(find "$HOME/Library/Developer/Xcode/DerivedData" \
+    -path "*artifacts*sparkle*" -name sign_update -print -quit 2>/dev/null | xargs dirname 2>/dev/null || true)"
+fi
 if [ -z "$SPARKLE_BIN" ]; then
   echo "⚠ Sparkle tools not found (resolve packages first: xcodebuild -resolvePackageDependencies)."
   echo "  Skipping appcast generation — this build will NOT be offered as an auto-update."

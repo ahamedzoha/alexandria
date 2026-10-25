@@ -5,6 +5,8 @@ struct LibraryGridView: View {
     @Environment(PlayerEngine.self) private var player
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selected: LibraryItem?
+    /// List view selection: Return or double-click opens, right-click acts.
+    @State private var tableSelection: Set<LibraryItem.ID> = []
 
     // Cover wall: tight gutters so the artwork reads as one continuous surface.
     private let columns = [GridItem(.adaptive(minimum: 160, maximum: 200), spacing: Theme.Space.s)]
@@ -75,7 +77,7 @@ struct LibraryGridView: View {
     }
 
     private var tableView: some View {
-        Table(app.visibleItems) {
+        Table(app.visibleItems, selection: $tableSelection) {
             TableColumn("Title") { item in
                 HStack(spacing: 8) {
                     RemoteImage(url: app.coverURL(itemID: item.id)) { image in
@@ -87,9 +89,6 @@ struct LibraryGridView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                     Text(item.title).lineLimit(1)
                 }
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) { selected = item }
-                .contextMenu { contextMenu(item) }
             }
             TableColumn("Author") { item in Text(item.author).lineLimit(1) }
             if isPodcastLibrary {
@@ -111,6 +110,13 @@ struct LibraryGridView: View {
                 }
                 TableColumn("Progress") { item in progressCell(item) }
             }
+        }
+        // Whole rows, keyboard included: Return or a double-click opens the
+        // book (the title cell's double-click was the only way before).
+        .contextMenu(forSelectionType: LibraryItem.ID.self) { ids in
+            if let item = tableItem(ids) { contextMenu(item) }
+        } primaryAction: { ids in
+            if let item = tableItem(ids) { selected = item }
         }
     }
 
@@ -141,6 +147,11 @@ struct LibraryGridView: View {
         Divider()
         Button("Show Author", systemImage: "person") { app.showGroup(kind: .authors, value: item.author) }
         Button("Show Details", systemImage: "info.circle") { selected = item }
+    }
+
+    private func tableItem(_ ids: Set<LibraryItem.ID>) -> LibraryItem? {
+        guard let id = ids.first else { return nil }
+        return app.visibleItems.first { $0.id == id }
     }
 
     private func playItem(_ item: LibraryItem) {
@@ -263,20 +274,10 @@ struct CoverCell: View {
 
     @ViewBuilder private var progressEdge: some View {
         if inProgress, let progress {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Rectangle().fill(.black.opacity(0.25))
-                    Rectangle()
-                        // Artwork-derived pop color; app accent until it lands.
-                        // Cached palette on the first frame: no blue flash when
-                        // a shelf is rebuilt on returning to Home.
-                        .fill((palette ?? PaletteStore.shared.cached(for: coverURL) ?? .neutral).accent)
-                        .frame(width: max(3, geo.size.width * progress.fraction))
-                }
-            }
-            .frame(height: 3)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+            // Artwork-derived pop color; the cached palette on the first frame
+            // so a rebuilt shelf doesn't flash the app accent.
+            CoverProgressEdge(fraction: progress.fraction,
+                              tint: (palette ?? PaletteStore.shared.cached(for: coverURL) ?? .neutral).accent)
         }
     }
 
@@ -284,13 +285,7 @@ struct CoverCell: View {
 
     private var playButton: some View {
         Button(action: onPlay) {
-            Image(systemName: "play.fill")
-                .font(.title3)
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(.black.opacity(0.55), in: Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
-                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+            CoverPlayGlyph()
         }
         .buttonStyle(.plain)
         .help("Play")
@@ -356,9 +351,13 @@ struct CoverArt: View {
 
     var body: some View {
         RemoteImage(url: url) { image in
+            // A flat fill behind a fitted image (the cover's own color when its
+            // palette is known) lets odd aspect ratios sit in a square tile
+            // without cropping. It used to be a second, blurred copy of the
+            // image — an offscreen blur pass per tile across whole grids.
             ZStack {
-                image.resizable().aspectRatio(contentMode: .fill)
-                    .blur(radius: 22).opacity(0.55)
+                PaletteStore.shared.cached(for: url).map { Rectangle().fill($0.background) }
+                    ?? Rectangle().fill(Color.primary.opacity(0.06))
                 image.resizable().aspectRatio(contentMode: .fit)
             }
         } fallback: {
