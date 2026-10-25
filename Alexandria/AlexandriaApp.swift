@@ -49,10 +49,14 @@ struct AlexandriaApp: App {
                     .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
                     .disabled(player.chapters.isEmpty)
                 Divider()
-                Button(app.showNowPlayingInfo ? "Hide Info" : "Show Info") {
-                    app.showNowPlayingInfo.toggle()
+                Button(app.inspectorShowing(.details) ? "Hide Info" : "Show Info") {
+                    app.toggleInspector(.details)
                 }
                 .keyboardShortcut("i", modifiers: .command)
+                Button(app.inspectorShowing(.upNext) ? "Hide Up Next" : "Show Up Next") {
+                    app.toggleInspector(.upNext)
+                }
+                .keyboardShortcut("u", modifiers: [.command, .option])
                 Divider()
                 Toggle("Continue Playing Up Next", isOn: Binding(
                     get: { app.autoPlayNextEpisodes },

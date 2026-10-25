@@ -121,11 +121,19 @@ struct MainView: View {
                         .help("Sort and filter")
                     }
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Button { app.showNowPlayingInfo.toggle() } label: {
-                        Label("Now Playing Info", systemImage: "sidebar.trailing")
+                // Music-style panel toggles: each opens the inspector on its
+                // side and shows pressed while that side is up.
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Toggle(isOn: Binding(get: { app.inspectorShowing(.details) },
+                                         set: { _ in app.toggleInspector(.details) })) {
+                        Label("Now Playing", systemImage: "info.circle")
                     }
-                    .help(app.showNowPlayingInfo ? "Hide Now Playing Info" : "Show Now Playing Info")
+                    .help("Now Playing (⌘I)")
+                    Toggle(isOn: Binding(get: { app.inspectorShowing(.upNext) },
+                                         set: { _ in app.toggleInspector(.upNext) })) {
+                        Label("Up Next", systemImage: "list.bullet")
+                    }
+                    .help("Up Next (⌥⌘U)")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button { Task { await app.syncNow() } } label: {

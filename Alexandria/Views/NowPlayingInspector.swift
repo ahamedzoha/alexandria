@@ -9,17 +9,10 @@ struct NowPlayingInspector: View {
     @Environment(AppState.self) private var app
     @Environment(PlayerEngine.self) private var player
 
+    // Which side shows is chosen by the toolbar's Now Playing / Up Next
+    // toggles (as in Music), so the panel itself carries no switch.
     var body: some View {
-        @Bindable var app = app
         VStack(spacing: 0) {
-            Picker("View", selection: $app.inspectorTab) {
-                ForEach(AppState.InspectorTab.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, Theme.Space.l)
-            .padding(.vertical, Theme.Space.s)
-
             switch app.inspectorTab {
             case .details:
                 if player.itemID.isEmpty {

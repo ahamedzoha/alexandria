@@ -86,7 +86,7 @@ struct NowPlayingBar: View {
     /// toggled toolbar button; the negative padding keeps the bar's layout
     /// identical to a plain artwork/title pair.
     private func infoToggle<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        Button { app.showNowPlayingInfo.toggle() } label: {
+        Button { app.toggleInspector(.details) } label: {
             content()
                 .padding(4)
                 .background(Color.primary.opacity(app.showNowPlayingInfo ? 0.08 : (infoHover ? 0.05 : 0)),
@@ -211,14 +211,9 @@ struct NowPlayingBar: View {
 
     /// Opens (or closes) the inspector on Up Next.
     private var queueButton: some View {
-        let showing = app.showNowPlayingInfo && app.inspectorTab == .upNext
+        let showing = app.inspectorShowing(.upNext)
         return Button {
-            if showing {
-                app.showNowPlayingInfo = false
-            } else {
-                app.inspectorTab = .upNext
-                app.showNowPlayingInfo = true
-            }
+            app.toggleInspector(.upNext)
         } label: {
             Image(systemName: "list.bullet")
                 .foregroundStyle(showing ? accent : .secondary)

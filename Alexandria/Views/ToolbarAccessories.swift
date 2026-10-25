@@ -108,7 +108,7 @@ struct LevelVisualizer: View {
     }
 
     private var button: some View {
-        Button { app.showNowPlayingInfo.toggle() } label: {
+        Button { app.toggleInspector(.details) } label: {
             TimelineView(.animation(minimumInterval: 1 / 30, paused: !player.isPlaying || reduceMotion)) { _ in
                 let heights = displayedHeights()
                 HStack(alignment: .center, spacing: 2) {

@@ -181,6 +181,21 @@ final class AppState {
     }
     /// Which side of the Now Playing inspector is showing.
     var inspectorTab: InspectorTab = .details
+
+    /// Music-style panel buttons: open the inspector on `tab`, or close it
+    /// when that tab is already showing.
+    func toggleInspector(_ tab: InspectorTab) {
+        if showNowPlayingInfo && inspectorTab == tab {
+            showNowPlayingInfo = false
+        } else {
+            inspectorTab = tab
+            showNowPlayingInfo = true
+        }
+    }
+
+    func inspectorShowing(_ tab: InspectorTab) -> Bool {
+        showNowPlayingInfo && inspectorTab == tab
+    }
     // The trailing Now Playing inspector; remembered across launches.
     var showNowPlayingInfo: Bool = UserDefaults.standard.bool(forKey: "showNowPlayingInfo") {
         didSet { UserDefaults.standard.set(showNowPlayingInfo, forKey: "showNowPlayingInfo") }
