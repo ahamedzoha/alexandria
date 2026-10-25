@@ -28,8 +28,8 @@ final class AudioLevelMeter: @unchecked Sendable {
     private var scratchBands = [Float](repeating: 0, count: AudioLevelMeter.bandCount)
     /// Band edges in Hz: log-spaced across the voice/music range.
     private static let bandEdges: [Double] = [60, 250, 600, 1500, 4000, 12000]
-    private var sampleRate: Double = 44_100
-    private var isFloat = true
+    fileprivate var sampleRate: Double = 44_100
+    fileprivate var isFloat = true
 
     init() {
         fftSetup = vDSP_create_fftsetup(Self.log2n, FFTRadix(kFFTRadix2))!
@@ -54,33 +54,39 @@ final class AudioLevelMeter: @unchecked Sendable {
 
     // MARK: Tap
 
-    /// Attaches a tap to `item`'s audio so its playback feeds this meter.
-    /// Asynchronous: the audio track has to load first. Failure just leaves
-    /// the item untapped — the bars stay still, playback is unaffected. The
-    /// player item stays on the main actor throughout; only the tap's C
-    /// callbacks run on the audio thread.
+    /// Attaches a tap to `item`'s audio so its playback feeds this meter —
+    /// after Sound Enhancement (SoundEnhancement.swift) has processed it, so
+    /// the bars show what's heard. Asynchronous: the audio track has to load
+    /// first. Failure just leaves the item untapped — no bars, no
+    /// enhancement, playback unaffected. The player item stays on the main
+    /// actor throughout; only the tap's C callbacks run on the audio thread.
     @MainActor
     func attach(to item: AVPlayerItem) {
         Task { @MainActor in
             guard let track = try? await item.asset.loadTracks(withMediaType: .audio).first else { return }
             var callbacks = MTAudioProcessingTapCallbacks(
                 version: kMTAudioProcessingTapCallbacksVersion_0,
-                clientInfo: Unmanaged.passRetained(self).toOpaque(),
+                clientInfo: Unmanaged.passRetained(TapContext(meter: self)).toOpaque(),
                 init: { _, clientInfo, storageOut in storageOut.pointee = clientInfo },
                 finalize: { tap in
-                    Unmanaged<AudioLevelMeter>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).release()
+                    Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).release()
                 },
-                prepare: { tap, _, format in
-                    let meter = Unmanaged<AudioLevelMeter>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue()
-                    meter.sampleRate = format.pointee.mSampleRate
-                    meter.isFloat = format.pointee.mFormatFlags & kAudioFormatFlagIsFloat != 0
+                prepare: { tap, maxFrames, format in
+                    let context = Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue()
+                    context.meter.sampleRate = format.pointee.mSampleRate
+                    context.meter.isFloat = format.pointee.mFormatFlags & kAudioFormatFlagIsFloat != 0
+                    context.chain = EnhancementChain(format: format.pointee, maxFrames: UInt32(maxFrames))
                 },
-                unprepare: nil,
+                unprepare: { tap in
+                    Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue().chain = nil
+                },
                 process: { tap, frameCount, _, bufferList, framesOut, flagsOut in
                     guard MTAudioProcessingTapGetSourceAudio(tap, frameCount, bufferList, flagsOut, nil, framesOut) == noErr
                     else { return }
-                    let meter = Unmanaged<AudioLevelMeter>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue()
-                    meter.analyze(bufferList, frames: Int(framesOut.pointee))
+                    let context = Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue()
+                    let frames = UInt32(framesOut.pointee)
+                    context.chain?.process(bufferList, frames: frames, settings: SoundSettings.shared.snapshot())
+                    context.meter.analyze(bufferList, frames: Int(frames))
                 }
             )
             var tap: MTAudioProcessingTap?
@@ -97,7 +103,7 @@ final class AudioLevelMeter: @unchecked Sendable {
 
     // MARK: Analysis (audio thread)
 
-    private func analyze(_ bufferList: UnsafeMutablePointer<AudioBufferList>, frames: Int) {
+    fileprivate func analyze(_ bufferList: UnsafeMutablePointer<AudioBufferList>, frames: Int) {
         guard isFloat, frames > 0 else { return }
         let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
         let n = min(frames, Self.fftSize)
@@ -146,4 +152,13 @@ final class AudioLevelMeter: @unchecked Sendable {
         for band in 0..<Self.bandCount { bands[band] = scratchBands[band] }
         os_unfair_lock_unlock(&lock)
     }
+}
+
+/// One tap's state: the shared meter, and this item's enhancement chain
+/// (built for its stream format in `prepare`, released in `unprepare`).
+private final class TapContext: @unchecked Sendable {
+    let meter: AudioLevelMeter
+    var chain: EnhancementChain?
+
+    init(meter: AudioLevelMeter) { self.meter = meter }
 }

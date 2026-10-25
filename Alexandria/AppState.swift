@@ -202,6 +202,8 @@ final class AppState {
     // Per-show episode order, remembered in UserDefaults ("episodeOrder.<id>");
     // mirrored here so the episode list re-sorts the moment it changes.
     var episodeOrders: [String: EpisodeOrder] = [:]
+    // Bumped whenever a Sound setting is saved, so views reading them redraw.
+    var soundRevision = 0
     // Home's header has scrolled under the toolbar: its compact twin and the
     // level visualizer show in the toolbar.
     var homeHeaderCollapsed = false
@@ -1216,6 +1218,42 @@ final class AppState {
     func setEpisodeOrder(_ order: EpisodeOrder, for item: LibraryItem) {
         episodeOrders[item.id] = order
         UserDefaults.standard.set(order.rawValue, forKey: "episodeOrder.\(item.id)")
+    }
+
+    // MARK: Sound
+
+    /// The sound a book plays with: its own, else its series', else the
+    /// Settings default (see SoundPreferences). Reads `soundRevision` so views
+    /// refresh when any of them changes.
+    func soundProfile(for item: LibraryItem) -> SoundProfile {
+        _ = soundRevision
+        return SoundPreferences().profile(itemID: item.id, series: item.seriesBaseName)
+    }
+
+    /// Whether the book follows a setting shared across its series.
+    func soundSharedWithSeries(_ item: LibraryItem) -> Bool {
+        _ = soundRevision
+        return SoundPreferences().scope(itemID: item.id, series: item.seriesBaseName) == .series
+    }
+
+    func setSoundProfile(_ profile: SoundProfile, for item: LibraryItem) {
+        SoundPreferences().set(profile, itemID: item.id, series: item.seriesBaseName)
+        soundRevision += 1
+    }
+
+    func shareSoundWithSeries(_ share: Bool, for item: LibraryItem) {
+        guard let series = item.seriesBaseName else { return }
+        SoundPreferences().shareWithSeries(share, itemID: item.id, series: series)
+        soundRevision += 1
+    }
+
+    /// Settings ▸ the sound for books without their own.
+    var defaultSoundPreset: SoundProfile.Preset {
+        get { _ = soundRevision; return SoundPreferences().fallback.preset }
+        set {
+            SoundPreferences().fallback = .preset(newValue)
+            soundRevision += 1
+        }
     }
 
     /// The episode an item-level "play" targets for a podcast: the in-progress

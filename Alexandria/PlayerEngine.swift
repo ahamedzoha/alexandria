@@ -95,6 +95,19 @@ final class PlayerEngine {
 
     var isSleepArmed: Bool { sleepTimer != .off }
 
+    // Sound Enhancement (SoundEnhancement.swift): what the loaded item plays
+    // through. Every playback tap reads SoundSettings.shared.
+    private(set) var soundProfile: SoundProfile = .original
+    /// Hold-to-compare: the original while true.
+    var isComparingSound = false {
+        didSet { SoundSettings.shared.setBypass(isComparingSound) }
+    }
+
+    func setSoundProfile(_ profile: SoundProfile) {
+        soundProfile = profile
+        SoundSettings.shared.apply(profile)
+    }
+
     init() {
         configureRemoteCommands()
     }
@@ -109,7 +122,8 @@ final class PlayerEngine {
               token: String?,
               title: String,
               author: String,
-              cover: URL?) -> Bool {
+              cover: URL?,
+              sound: SoundProfile = .original) -> Bool {
         // Resolve the new track list first — if nothing is playable, bail out
         // without tearing down whatever is currently playing.
         let sorted = session.audioTracks.sorted { ($0.index ?? 0) < ($1.index ?? 0) }
@@ -136,6 +150,9 @@ final class PlayerEngine {
 
         trackOffsets = offsets
         trackURLs = urls
+        isComparingSound = false
+        setSoundProfile(sound)
+        SoundSettings.shared.requestReset()
         currentTitle = title
         currentAuthor = author
         coverURL = cover
@@ -428,6 +445,7 @@ final class PlayerEngine {
         let within = target - trackOffsets[idx]
         // Seeking back from the end makes a later finish count again.
         if target < duration - 1 { didFireFinished = false }
+        SoundSettings.shared.requestReset()
 
         // At the natural end the queue has already dropped its last item, so
         // an in-track seek has nothing to seek; rebuild from the target track.

@@ -58,7 +58,8 @@ func startPlayback(item: LibraryItem, episode: PodcastEpisode? = nil, startAt: D
                                  serverURL: app.serverURL, token: app.token,
                                  title: title,
                                  author: episode == nil ? item.author : item.title,
-                                 cover: cover)
+                                 cover: cover,
+                                 sound: app.soundProfile(for: item))
         if loaded {
             // A download plays without a server session.
             app.sessionStarted(id: local == nil ? info.id : nil, itemID: item.id, episodeID: episode?.id)
