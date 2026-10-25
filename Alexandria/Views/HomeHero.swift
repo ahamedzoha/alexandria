@@ -36,8 +36,10 @@ struct GreetingHeader: View {
         Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())
     }
 
-    private var greeting: String {
-        switch Calendar.current.component(.hour, from: Date()) {
+    private var greeting: String { Self.greeting(at: .now) }
+
+    static func greeting(at date: Date) -> String {
+        switch Calendar.current.component(.hour, from: date) {
         case 5..<12: return "Good morning"
         case 12..<17: return "Good afternoon"
         default: return "Good evening"

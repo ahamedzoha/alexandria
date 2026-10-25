@@ -169,6 +169,9 @@ final class AppState {
     // Per-show episode order, remembered in UserDefaults ("episodeOrder.<id>");
     // mirrored here so the episode list re-sorts the moment it changes.
     var episodeOrders: [String: EpisodeOrder] = [:]
+    // Home's header has scrolled under the toolbar: its compact twin and the
+    // level visualizer show in the toolbar.
+    var homeHeaderCollapsed = false
     // The trailing Now Playing inspector; remembered across launches.
     var showNowPlayingInfo: Bool = UserDefaults.standard.bool(forKey: "showNowPlayingInfo") {
         didSet { UserDefaults.standard.set(showNowPlayingInfo, forKey: "showNowPlayingInfo") }

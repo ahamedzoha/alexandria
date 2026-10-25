@@ -19,6 +19,8 @@ final class PlayerEngine {
     private var endObserver: NSObjectProtocol?
     private var failureObserver: NSObjectProtocol?
     @ObservationIgnored private var statusObservations: [NSKeyValueObservation] = []
+    /// Live spectrum of the playing audio, for the toolbar visualizer.
+    @ObservationIgnored let levelMeter = AudioLevelMeter()
 
     // Book layout: parallel arrays, one entry per audio track, in play order.
     private var trackOffsets: [Double] = []   // absolute start of each track within the book
@@ -176,6 +178,7 @@ final class PlayerEngine {
         } else {
             item = AVPlayerItem(url: url)
         }
+        levelMeter.attach(to: item)
         // A track that can't load used to mean silence and nothing else.
         statusObservations.append(item.observe(\.status) { [weak self] item, _ in
             guard item.status == .failed else { return }
@@ -331,6 +334,7 @@ final class PlayerEngine {
     func pause() {
         player?.pause()
         isPlaying = false
+        levelMeter.reset()
         lastSleepTick = nil
         reportNow()
         updateNowPlayingInfo()

@@ -97,6 +97,14 @@ struct HomeView: View {
             }
             .padding(.vertical, Theme.Space.xl)
         }
+        // Once the greeting + stats have scrolled under the toolbar, their
+        // compact twin (and the visualizer) take over up there.
+        .onScrollGeometryChange(for: Bool.self) { geo in
+            geo.contentOffset.y + geo.contentInsets.top > 190
+        } action: { _, collapsed in
+            app.homeHeaderCollapsed = collapsed
+        }
+        .onDisappear { app.homeHeaderCollapsed = false }
         .onAppear {
             guard !appeared else { return }
             HomeView.hasEntered = true

@@ -85,9 +85,22 @@ struct MainView: View {
                         .help("Grid or list view")
                     }
                 }
+                if app.sidebar == .home {
+                    ToolbarItem(placement: .navigation) {
+                        CompactGreeting(visible: app.homeHeaderCollapsed)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                }
                 ToolbarItem(placement: .principal) {
                     searchField
                 }
+                // Right of the search field: always on other pages while
+                // something is loaded; on Home, once the header scrolls away.
+                ToolbarItem(placement: .principal) {
+                    LevelVisualizer(visible: !player.itemID.isEmpty
+                                    && (app.sidebar != .home || app.homeHeaderCollapsed))
+                }
+                .sharedBackgroundVisibility(.hidden)
                 if app.sidebar == .library {
                     ToolbarItem(placement: .primaryAction) {
                         Menu {
