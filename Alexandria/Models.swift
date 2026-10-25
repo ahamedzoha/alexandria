@@ -49,6 +49,7 @@ struct LibraryItem: Decodable, Identifiable, Sendable, Hashable {
         let narratorName: String?
         let seriesName: String?
         let description: String?
+        let type: String?         // podcasts: "episodic" | "serial"
     }
 
     var title: String { media?.metadata?.title ?? "Untitled" }

@@ -166,6 +166,9 @@ final class AppState {
     var scrollBarStyle: ScrollBarStyle = ScrollBarStyle.stored {
         didSet { UserDefaults.standard.set(scrollBarStyle.rawValue, forKey: ScrollBarStyle.defaultsKey) }
     }
+    // Per-show episode order, remembered in UserDefaults ("episodeOrder.<id>");
+    // mirrored here so the episode list re-sorts the moment it changes.
+    var episodeOrders: [String: EpisodeOrder] = [:]
     // The trailing Now Playing inspector; remembered across launches.
     var showNowPlayingInfo: Bool = UserDefaults.standard.bool(forKey: "showNowPlayingInfo") {
         didSet { UserDefaults.standard.set(showNowPlayingInfo, forKey: "showNowPlayingInfo") }
@@ -964,17 +967,30 @@ final class AppState {
     /// advance chronologically. Finished episodes are skipped.
     func nextEpisode(after episodeID: String, in itemID: String) -> PodcastEpisode? {
         guard let list = episodesByItem[itemID] else { return nil }
-        let ordered = list.sorted { $0.sortDate < $1.sortDate }
-        guard let index = ordered.firstIndex(where: { $0.id == episodeID }) else { return nil }
-        return ordered.dropFirst(index + 1).first {
-            !(progress(itemID: itemID, episodeID: $0.id)?.isFinished ?? false)
+        return EpisodeOrder.nextEpisode(after: episodeID, in: list) {
+            progress(itemID: itemID, episodeID: $0.id)?.isFinished ?? false
         }
     }
 
+    /// The show's chosen order: what the user picked, else the default for
+    /// its podcast type.
+    func episodeOrder(for item: LibraryItem) -> EpisodeOrder {
+        if let chosen = episodeOrders[item.id] { return chosen }
+        if let raw = UserDefaults.standard.string(forKey: "episodeOrder.\(item.id)"),
+           let stored = EpisodeOrder(rawValue: raw) { return stored }
+        return .defaultOrder(podcastType: item.media?.metadata?.type)
+    }
+
+    func setEpisodeOrder(_ order: EpisodeOrder, for item: LibraryItem) {
+        episodeOrders[item.id] = order
+        UserDefaults.standard.set(order.rawValue, forKey: "episodeOrder.\(item.id)")
+    }
+
     /// The episode an item-level "play" targets for a podcast: the in-progress
-    /// episode played most recently, else the next unfinished episode (feed
-    /// order) after the last finished one, else the newest. Loads the episode
-    /// list on a cache miss; nil when no episodes are available.
+    /// episode played most recently, else where the show's episode order
+    /// starts (see EpisodeOrder.startingEpisode — Oldest First begins at the
+    /// oldest unplayed episode). Loads the episode list on a cache miss; nil
+    /// when no episodes are available.
     func resumeEpisode(for item: LibraryItem) async -> PodcastEpisode? {
         if episodesByItem[item.id] == nil { await loadEpisodes(itemID: item.id) }
         guard let list = episodesByItem[item.id], !list.isEmpty else { return nil }
@@ -990,14 +1006,9 @@ final class AppState {
         }) {
             return resume
         }
-        let ordered = list.sorted { $0.sortDate < $1.sortDate }
-        if let lastFinished = ordered.lastIndex(where: { progressFor($0)?.isFinished ?? false }),
-           let next = ordered.dropFirst(lastFinished + 1).first(where: {
-               !(progressFor($0)?.isFinished ?? false)
-           }) {
-            return next
+        return episodeOrder(for: item).startingEpisode(in: list) {
+            progressFor($0)?.isFinished ?? false
         }
-        return ordered.last
     }
 
     func item(byID id: String) -> LibraryItem? {

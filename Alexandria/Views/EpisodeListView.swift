@@ -85,7 +85,7 @@ struct EpisodeListView: View {
                 .font(.callout.monospacedDigit())
                 .foregroundStyle(.secondary)
             Spacer()
-            // A plain menu picker: the current choice is the label.
+            // Plain menu pickers: the current choice is the label.
             Picker("Show", selection: $filter) {
                 ForEach(Filter.allCases) { Text($0.rawValue).tag($0) }
             }
@@ -93,6 +93,16 @@ struct EpisodeListView: View {
             .labelsHidden()
             .fixedSize()
             .help("Show which episodes")
+            Picker("Episode Order", selection: Binding(
+                get: { app.episodeOrder(for: item) },
+                set: { app.setEpisodeOrder($0, for: item) }
+            )) {
+                ForEach(EpisodeOrder.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+            .help("Episode order, remembered for this show")
         }
         .padding(.horizontal, Theme.Space.m)
         .padding(.top, Theme.Space.m)
@@ -113,11 +123,9 @@ struct EpisodeListView: View {
     // MARK: Filtering / ordering
 
     private func filteredSorted(_ episodes: [PodcastEpisode]) -> [PodcastEpisode] {
-        // Serial shows should read oldest-first, but the podcast type isn't in
-        // our metadata models yet — newest-first for everything until it is.
-        // sortDate keeps this ordering consistent with nextEpisode's.
-        episodes.filter(matches)
-            .sorted { $0.sortDate > $1.sortDate }
+        // The show's remembered order (serial shows default to oldest-first);
+        // sortDate keeps it consistent with nextEpisode's.
+        app.episodeOrder(for: item).sorted(episodes.filter(matches))
     }
 
     private func matches(_ episode: PodcastEpisode) -> Bool {
