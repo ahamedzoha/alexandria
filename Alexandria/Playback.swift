@@ -27,7 +27,8 @@ func startPlayback(item: LibraryItem, episode: PodcastEpisode? = nil, app: AppSt
             }
         }
         guard !Task.isCancelled else { onResult?(false); return }
-        let local = app.downloads.localSession(for: item.id, episodeID: episode?.id)
+        let local = app.downloads.localSession(for: item.id, episodeID: episode?.id,
+                                               serverProgress: app.progress(itemID: item.id, episodeID: episode?.id))
         let info: PlaybackInfo?
         let cover: URL?
         if let local {

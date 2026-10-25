@@ -32,12 +32,16 @@ struct DownloadedBook: Codable, Identifiable, Sendable {
     var id: String { episodeID.map { "\(itemID)|\($0)" } ?? itemID }
 }
 
-struct PendingProgress: Codable, Sendable {
+struct PendingProgress: Codable, Sendable, Equatable {
     var currentTime: Double
     var duration: Double
     // Set for queued (un)finished marks so they flush even when the episode's
     // duration is unknown; nil derives the flag from time/duration as before.
     var isFinished: Bool? = nil
+    // Epoch ms when queued. Anything newer — a later successful write, or
+    // progress from another device — makes this entry obsolete. nil for
+    // entries queued before this field existed (always flushed).
+    var queuedAt: Double? = nil
 }
 
 /// Manages offline downloads: audio files on disk, a JSON index, and an
@@ -47,12 +51,21 @@ struct PendingProgress: Codable, Sendable {
 final class DownloadStore {
     var downloadedBooks: [DownloadedBook] = []
     var activeDownloads: [String: Double] = [:]   // itemID or "itemID|episodeID" -> 0...1 progress
-    private var pending: [String: PendingProgress] = [:]
+    private(set) var pending: [String: PendingProgress] = [:]
     /// Set when index.json exists but wouldn't decode — sweepOrphans must not
     /// treat every folder as orphaned against an index we couldn't read.
     private var indexDecodeFailed = false
+    /// The flush in progress, so overlapping callers (sync loop, a progress
+    /// write's tail) wait for it instead of sending every entry twice.
+    @ObservationIgnored private var flushTask: Task<Void, Never>?
+    private let baseDir: URL
 
-    init() {
+    /// `baseDir` defaults to Application Support/Alexandria; tests pass a
+    /// temporary folder.
+    init(baseDir: URL? = nil) {
+        self.baseDir = baseDir ?? FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Alexandria", isDirectory: true)
         load()
         sweepOrphans()
     }
@@ -77,7 +90,10 @@ final class DownloadStore {
     }
 
     /// Rebuild a PlaybackInfo from local files so the player can play offline.
-    func localSession(for itemID: String, episodeID: String? = nil) -> PlaybackInfo? {
+    /// `serverProgress` wins over the download's saved position when it's
+    /// newer — listening continued on another device.
+    func localSession(for itemID: String, episodeID: String? = nil,
+                      serverProgress: AppState.ItemProgress? = nil) -> PlaybackInfo? {
         guard let book = book(itemID, episodeID: episodeID) else { return nil }
         let dir = trackDir(itemID, episodeID: episodeID)
         let tracks = book.tracks.enumerated().map { i, t in
@@ -93,8 +109,8 @@ final class DownloadStore {
         let chapters = book.chapters.map {
             PlaybackInfo.Chapter(start: $0.start, end: $0.end, title: $0.title)
         }
-        // Finished (or within a second of the end): restart from the top.
-        let resumeTime = book.duration > 0 && book.savedProgress >= book.duration - 1 ? 0 : book.savedProgress
+        let resumeTime = Self.resumeTime(saved: book.savedProgress, savedAt: book.updatedAt,
+                                         duration: book.duration, server: serverProgress)
         return PlaybackInfo(
             id: nil,
             episodeId: episodeID,
@@ -103,6 +119,19 @@ final class DownloadStore {
             currentTime: resumeTime,
             duration: book.duration
         )
+    }
+
+    /// Where a download should start: its saved position, unless the server
+    /// row is newer (`savedAt` is epoch seconds, `lastUpdate` epoch ms; a
+    /// second of slack absorbs this Mac's own writes, which update both).
+    /// Finished — or within a second of the end — restarts from the top.
+    nonisolated static func resumeTime(saved: Double, savedAt: Double, duration: Double,
+                                       server: AppState.ItemProgress?) -> Double {
+        var position = saved
+        if let server, server.lastUpdate / 1000 > savedAt + 1 {
+            position = server.isFinished ? duration : (server.currentTime ?? server.fraction * duration)
+        }
+        return duration > 0 && position >= duration - 1 ? 0 : max(0, position)
     }
 
     func localCoverURL(_ itemID: String) -> URL? {
@@ -220,33 +249,68 @@ final class DownloadStore {
         persist()
     }
 
-    func queuePending(itemID: String, episodeID: String? = nil, currentTime: Double, duration: Double, isFinished: Bool? = nil) {
-        pending[downloadKey(itemID, episodeID)] = PendingProgress(currentTime: currentTime, duration: duration, isFinished: isFinished)
+    func queuePending(itemID: String, episodeID: String? = nil, currentTime: Double, duration: Double,
+                      isFinished: Bool? = nil, now: Double = Date().timeIntervalSince1970 * 1000) {
+        pending[downloadKey(itemID, episodeID)] = PendingProgress(currentTime: currentTime, duration: duration,
+                                                                  isFinished: isFinished, queuedAt: now)
         persistPending()
     }
 
-    func flushPending(api: APIClient) async {
+    /// A write for this key just reached the server, so anything queued before
+    /// it started is obsolete — flushing it later would move the server back.
+    func clearPending(itemID: String, episodeID: String? = nil, queuedBefore cutoff: Double) {
+        let key = downloadKey(itemID, episodeID)
+        guard let entry = pending[key], (entry.queuedAt ?? 0) < cutoff else { return }
+        pending[key] = nil
+        persistPending()
+    }
+
+    /// Send queued progress. `isSuperseded(itemID, episodeID, queuedAt)` says
+    /// whether newer progress is already known for that key; such entries are
+    /// dropped unsent.
+    func flushPending(api: APIClient, isSuperseded: @escaping (String, String?, Double) -> Bool) async {
+        await flushPending(isSuperseded: isSuperseded) { itemID, episodeID, progress in
+            let fraction = progress.duration > 0 ? min(1, progress.currentTime / progress.duration) : 0
+            let finished = progress.isFinished ?? (fraction >= 0.99)
+            if progress.duration > 0 {
+                try await api.patchProgress(itemID: itemID, episodeID: episodeID,
+                                            currentTime: progress.currentTime, duration: progress.duration,
+                                            progress: finished ? 1 : fraction, isFinished: finished)
+            } else {
+                // Queued mark without a known duration: send only the flag
+                // so we don't clobber the server's stored time with zeros.
+                try await api.patchProgress(itemID: itemID, episodeID: episodeID,
+                                            progress: finished ? 1 : 0, isFinished: finished)
+            }
+        }
+    }
+
+    /// The flush itself, with the transport injected (tests record sends).
+    func flushPending(isSuperseded: @escaping (String, String?, Double) -> Bool,
+                      send: @escaping (String, String?, PendingProgress) async throws -> Void) async {
+        if let running = flushTask {
+            await running.value
+            return
+        }
+        let task = Task { await performFlush(isSuperseded: isSuperseded, send: send) }
+        flushTask = task
+        await task.value
+        flushTask = nil
+    }
+
+    private func performFlush(isSuperseded: (String, String?, Double) -> Bool,
+                              send: (String, String?, PendingProgress) async throws -> Void) async {
         guard !pending.isEmpty else { return }
         for (key, progress) in pending {
             let (itemID, episodeID) = splitKey(key)
-            let fraction = progress.duration > 0 ? min(1, progress.currentTime / progress.duration) : 0
-            let finished = progress.isFinished ?? (fraction >= 0.99)
+            if let queuedAt = progress.queuedAt, isSuperseded(itemID, episodeID, queuedAt) {
+                pending[key] = nil
+                continue
+            }
             do {
-                if progress.duration > 0 {
-                    try await api.patchProgress(itemID: itemID, episodeID: episodeID,
-                                                currentTime: progress.currentTime, duration: progress.duration,
-                                                progress: finished ? 1 : fraction, isFinished: finished)
-                } else {
-                    // Queued mark without a known duration: send only the flag
-                    // so we don't clobber the server's stored time with zeros.
-                    try await api.patchProgress(itemID: itemID, episodeID: episodeID,
-                                                progress: finished ? 1 : 0, isFinished: finished)
-                }
+                try await send(itemID, episodeID, progress)
                 // Only clear if no newer update was queued while we were sending.
-                if pending[key]?.currentTime == progress.currentTime,
-                   pending[key]?.isFinished == progress.isFinished {
-                    pending[key] = nil
-                }
+                if pending[key] == progress { pending[key] = nil }
             } catch {
                 // still offline; keep it queued
             }
@@ -274,10 +338,6 @@ final class DownloadStore {
         return comps.url
     }
 
-    private var baseDir: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return appSupport.appendingPathComponent("Alexandria", isDirectory: true)
-    }
     private func audioDir(_ itemID: String) -> URL {
         baseDir.appendingPathComponent("audio", isDirectory: true).appendingPathComponent(itemID, isDirectory: true)
     }

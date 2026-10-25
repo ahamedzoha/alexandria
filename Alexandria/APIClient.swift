@@ -96,17 +96,35 @@ struct APIClient: Sendable {
         return try await send(req, as: MeResponse.self).mediaProgress ?? []
     }
 
+    /// Every item in the library, fetched page by page.
     func items(libraryID: String) async throws -> [LibraryItem] {
-        var req = try request("api/libraries/\(libraryID)/items")
-        // add paging + sort as query
-        if var comps = URLComponents(url: req.url!, resolvingAgainstBaseURL: false) {
-            comps.queryItems = [
-                URLQueryItem(name: "limit", value: "200"),
-                URLQueryItem(name: "sort", value: "media.metadata.title"),
-            ]
-            if let u = comps.url { req.url = u }
+        try await Self.collectPages(pageSize: 500) { page in
+            var req = try request("api/libraries/\(libraryID)/items")
+            if var comps = URLComponents(url: req.url!, resolvingAgainstBaseURL: false) {
+                comps.queryItems = [
+                    URLQueryItem(name: "limit", value: "500"),
+                    URLQueryItem(name: "page", value: String(page)),
+                    URLQueryItem(name: "sort", value: "media.metadata.title"),
+                ]
+                if let u = comps.url { req.url = u }
+            }
+            return try await send(req, as: ItemsResponse.self)
         }
-        return try await send(req, as: ItemsResponse.self).results
+    }
+
+    /// Walks pages 0, 1, 2… until a short page or the server's total is
+    /// reached. The page cap only guards against a server that ignores `page`
+    /// and repeats itself forever.
+    static func collectPages(pageSize: Int, maxPages: Int = 200,
+                             fetch: (Int) async throws -> ItemsResponse) async throws -> [LibraryItem] {
+        var all: [LibraryItem] = []
+        for page in 0..<maxPages {
+            let response = try await fetch(page)
+            all.append(contentsOf: response.results)
+            if response.results.count < pageSize { break }
+            if let total = response.total, all.count >= total { break }
+        }
+        return all
     }
 
     /// Newest-added items first (for the Home "Recently Added" shelf).

@@ -26,6 +26,7 @@ struct Library: Decodable, Identifiable, Sendable, Hashable {
 
 struct ItemsResponse: Decodable, Sendable {
     let results: [LibraryItem]
+    let total: Int?   // whole-library count, across every page
 }
 
 struct LibraryItem: Decodable, Identifiable, Sendable, Hashable {
@@ -234,6 +235,7 @@ struct MediaProgress: Decodable, Sendable {
     let libraryItemId: String?
     let episodeId: String?   // set for podcast episode progress
     let progress: Double?
+    let currentTime: Double?  // seconds
     let isFinished: Bool?
     let lastUpdate: Double?   // epoch ms; powers "jump back in" ordering
 }

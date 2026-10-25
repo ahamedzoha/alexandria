@@ -12,6 +12,7 @@ struct ItemDetailView: View {
     /// True while the Play/Resume tap is building a session — the button
     /// disables so a slow server can't collect duplicate taps.
     @State private var launchingPlayback = false
+    @State private var confirmingRemoval = false
 
     private var coverURL: URL? {
         app.downloads.localCoverURL(item.id) ?? app.coverURL(itemID: item.id)
@@ -174,8 +175,9 @@ struct ItemDetailView: View {
 
     @ViewBuilder private var downloadButton: some View {
         if app.downloads.isDownloaded(item.id) {
-            Button(role: .destructive) {
-                app.removeDownload(itemID: item.id)
+            // Reads as a status, so a click asks before deleting anything.
+            Button {
+                confirmingRemoval = true
             } label: {
                 Label("Downloaded", systemImage: "checkmark.circle.fill")
                     .frame(maxWidth: .infinity)
@@ -183,6 +185,15 @@ struct ItemDetailView: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
             .tint(.green)
+            .help("Remove Download…")
+            .confirmationDialog("Remove the download of “\(item.title)”?",
+                                isPresented: $confirmingRemoval) {
+                Button("Remove Download", role: .destructive) {
+                    app.removeDownload(itemID: item.id)
+                }
+            } message: {
+                Text("It stays in your library and can still be streamed or downloaded again.")
+            }
         } else if let fraction = app.downloads.activeDownloads[item.id] {
             HStack(spacing: 8) {
                 ProgressView(value: fraction)

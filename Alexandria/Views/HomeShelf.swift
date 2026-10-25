@@ -16,26 +16,14 @@ struct HomeShelf: View {
             SectionHeader(title: title, symbol: symbol, onSeeAll: onSeeAll)
                 .padding(.horizontal, Theme.Space.xl)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: Theme.Space.m) {
-                    ForEach(items) { item in
-                        BookShelfCard(item: item,
-                                      onOpen: { onOpen(item) },
-                                      onPlay: { onPlay(item) })
-                            .frame(width: 150)
-                            .scrollTransition { content, phase in
-                                content
-                                    .scaleEffect(phase.isIdentity ? 1 : 0.97)
-                                    .opacity(phase.isIdentity ? 1 : 0.85)
-                            }
-                    }
+            ShelfScroller {
+                ForEach(items) { item in
+                    BookShelfCard(item: item,
+                                  onOpen: { onOpen(item) },
+                                  onPlay: { onPlay(item) })
+                        .shelfCard()
                 }
-                .padding(.vertical, 4)
             }
-            .scrollClipDisabled()
-            .clipsShelfEdges()
-            .contentMargins(.horizontal, Theme.Space.xl, for: .scrollContent)
-            .scrollEdgeEffectStyle(.soft, for: .horizontal)
         }
     }
 }
@@ -90,24 +78,11 @@ struct ContinueShelf: View {
             SectionHeader(title: title, symbol: symbol, onSeeAll: onSeeAll)
                 .padding(.horizontal, Theme.Space.xl)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: Theme.Space.m) {
-                    ForEach(entries) { entry in
-                        card(for: entry)
-                            .frame(width: 150)
-                            .scrollTransition { content, phase in
-                                content
-                                    .scaleEffect(phase.isIdentity ? 1 : 0.97)
-                                    .opacity(phase.isIdentity ? 1 : 0.85)
-                            }
-                    }
+            ShelfScroller(alignment: .top) {
+                ForEach(entries) { entry in
+                    card(for: entry).shelfCard()
                 }
-                .padding(.vertical, 4)
             }
-            .scrollClipDisabled()
-            .clipsShelfEdges()
-            .contentMargins(.horizontal, Theme.Space.xl, for: .scrollContent)
-            .scrollEdgeEffectStyle(.soft, for: .horizontal)
         }
     }
 
@@ -165,24 +140,11 @@ struct EpisodeShelf: View {
             SectionHeader(title: title, symbol: symbol)
                 .padding(.horizontal, Theme.Space.xl)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: Theme.Space.m) {
-                    ForEach(episodes) { episode in
-                        EpisodeCard(episode: episode)
-                            .frame(width: 150)
-                            .scrollTransition { content, phase in
-                                content
-                                    .scaleEffect(phase.isIdentity ? 1 : 0.97)
-                                    .opacity(phase.isIdentity ? 1 : 0.85)
-                            }
-                    }
+            ShelfScroller(alignment: .top) {
+                ForEach(episodes) { episode in
+                    EpisodeCard(episode: episode).shelfCard()
                 }
-                .padding(.vertical, 4)
             }
-            .scrollClipDisabled()
-            .clipsShelfEdges()
-            .contentMargins(.horizontal, Theme.Space.xl, for: .scrollContent)
-            .scrollEdgeEffectStyle(.soft, for: .horizontal)
         }
     }
 }
@@ -216,11 +178,114 @@ struct SectionHeader: View {
     }
 }
 
-private extension View {
-    /// Shelves draw past their bounds so hover lift and shadows aren't cut off,
-    /// but they must stop at the column's sides — otherwise covers slide in
-    /// under the Now Playing inspector. Clips horizontally only.
-    func clipsShelfEdges() -> some View {
-        mask { Rectangle().padding(.vertical, -Theme.Space.xl) }
+/// The horizontal scroller behind every Home shelf. Cards run edge to edge;
+/// hovering the shelf reveals paging arrows over the artwork (as in Music),
+/// so a plain mouse wheel — no trackpad, no Shift-scroll — can still reach
+/// every card. VoiceOver gets the arrows whenever there's more to scroll.
+struct ShelfScroller<Content: View>: View {
+    var alignment: VerticalAlignment = .center
+    @ViewBuilder let content: () -> Content
+
+    private enum Direction { case back, forward }
+
+    /// Just the numbers the arrows need, so scrolling doesn't re-render the
+    /// shelf for unrelated geometry changes.
+    private struct Extent: Equatable {
+        var offset: CGFloat = 0
+        var minOffset: CGFloat = 0
+        var maxOffset: CGFloat = 0
+        var width: CGFloat = 0
     }
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var position = ScrollPosition()
+    @State private var extent = Extent()
+    @State private var hovering = false
+
+    /// Vertical center of a shelf card's 150pt artwork (below the 4pt inset).
+    private var artworkCenter: CGFloat { 4 + ShelfCard.width / 2 }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(alignment: alignment, spacing: Theme.Space.m) {
+                content()
+            }
+            .padding(.vertical, 4)
+        }
+        .scrollPosition($position)
+        .onScrollGeometryChange(for: Extent.self) { geo in
+            Extent(offset: geo.contentOffset.x,
+                   minOffset: -geo.contentInsets.leading,
+                   maxOffset: max(-geo.contentInsets.leading,
+                                  geo.contentSize.width + geo.contentInsets.trailing - geo.containerSize.width),
+                   width: geo.containerSize.width)
+        } action: { _, new in
+            extent = new
+        }
+        .scrollClipDisabled()
+        // Draw past the bounds (hover lift, shadows) vertically only; covers
+        // must stop at the column's sides, not slide under the inspector.
+        .mask { Rectangle().padding(.vertical, -Theme.Space.xl) }
+        .contentMargins(.horizontal, Theme.Space.xl, for: .scrollContent)
+        .scrollEdgeEffectStyle(.soft, for: .horizontal)
+        .overlay(alignment: .topLeading) { arrow(.back) }
+        .overlay(alignment: .topTrailing) { arrow(.forward) }
+        .onHover { hovering = $0 }
+    }
+
+    private func canScroll(_ direction: Direction) -> Bool {
+        switch direction {
+        case .back: extent.offset > extent.minOffset + 1
+        case .forward: extent.offset < extent.maxOffset - 1
+        }
+    }
+
+    private func arrow(_ direction: Direction) -> some View {
+        let available = canScroll(direction)
+        let shown = available && hovering
+        return Button { page(direction) } label: {
+            Image(systemName: direction == .back ? "chevron.left" : "chevron.right")
+                .font(.body.weight(.semibold))
+                .frame(width: 32, height: 32)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .padding(.horizontal, Theme.Space.s)
+        .offset(y: artworkCenter - 16)
+        .opacity(shown ? 1 : 0)
+        .allowsHitTesting(shown)
+        .animation(.easeOut(duration: 0.15), value: shown)
+        .help(direction == .back ? "Scroll Back" : "Scroll Forward")
+        .accessibilityLabel(direction == .back ? "Scroll Back" : "Scroll Forward")
+        .accessibilityHidden(!available)
+    }
+
+    /// Most of a viewport per click, keeping a card of overlap for context.
+    private func page(_ direction: Direction) {
+        let step = max(extent.width - ShelfCard.width - Theme.Space.m * 2, ShelfCard.width)
+        let target = direction == .back ? extent.offset - step : extent.offset + step
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.45)) {
+            position.scrollTo(x: min(max(target, extent.minOffset), extent.maxOffset))
+        }
+    }
+}
+
+/// Fixed card width + the gentle edge falloff every shelf card shares.
+private struct ShelfCard: ViewModifier {
+    static let width: CGFloat = 150
+
+    func body(content: Content) -> some View {
+        content
+            .frame(width: Self.width)
+            .scrollTransition { content, phase in
+                content
+                    .scaleEffect(phase.isIdentity ? 1 : 0.97)
+                    .opacity(phase.isIdentity ? 1 : 0.85)
+            }
+    }
+}
+
+private extension View {
+    func shelfCard() -> some View { modifier(ShelfCard()) }
 }

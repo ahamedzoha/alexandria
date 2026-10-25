@@ -7,12 +7,11 @@ struct AlexandriaApp: App {
     @StateObject private var updater = UpdaterModel()
 
     init() {
-        // Use slim overlay scrollers (appear while scrolling, then fade) even
-        // when a mouse is attached — otherwise macOS renders wide legacy
-        // scroller bars that fight the sheet/card design. Per-app override of
-        // the system "Show scroll bars" preference; SwiftUI's
-        // .scrollIndicators(.hidden) is ignored in legacy-scroller mode.
-        UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
+        // 0.5.1 and earlier forced overlay scrollers by writing this key into
+        // the app's own defaults, overriding System Settings ▸ "Show scroll
+        // bars" — often an accessibility choice. Remove the stale override so
+        // the system setting applies again.
+        UserDefaults.standard.removeObject(forKey: "AppleShowScrollBars")
     }
 
     var body: some Scene {
