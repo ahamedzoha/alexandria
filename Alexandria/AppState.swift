@@ -216,6 +216,7 @@ final class AppState {
     /// The book or show the player last started (for Sound, which is
     /// remembered per book and per series).
     var playingItem: LibraryItem?
+    var playingEpisodeID: String?
     // Home's header has scrolled under the toolbar: its compact twin and the
     // level visualizer show in the toolbar.
     var homeHeaderCollapsed = false
@@ -538,6 +539,7 @@ final class AppState {
         episodeResumes = []
         otherLibraryResumes = []
         playingItem = nil
+        playingEpisodeID = nil
         isOffline = false
         cachedItemsByLibrary = [:]
         snapshotTask?.cancel()
@@ -1307,6 +1309,7 @@ final class AppState {
     /// the series' next unfinished books.
     func playbackStarted(item: LibraryItem, episode: PodcastEpisode?) async {
         playingItem = item
+        playingEpisodeID = episode?.id
         guard let id = QueueEntry(item: item, episode: episode)?.id else { return }
         if let episode {
             if episodesByItem[item.id] == nil { await loadEpisodes(itemID: item.id, quiet: true) }
@@ -1506,7 +1509,10 @@ final class AppState {
 
     /// Whether this plays with no server: downloaded (a show counts when any
     /// of its episodes is).
+    /// What's loaded in the player counts too — it keeps playing from its
+    /// buffer.
     func playableOffline(itemID: String, episodeID: String? = nil, isShow: Bool = false) -> Bool {
+        if playingItem?.id == itemID, isShow || playingEpisodeID == episodeID { return true }
         if isShow { return downloads.downloadedBooks.contains { $0.itemID == itemID } }
         return downloads.isDownloaded(itemID, episodeID: episodeID)
     }

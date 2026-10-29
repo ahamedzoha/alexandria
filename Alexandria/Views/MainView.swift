@@ -335,6 +335,26 @@ struct MainView: View {
     }
 
     private var serverSwitcher: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Beside the menu, not in its label: a borderless menu's label
+            // keeps only its title and images.
+            if app.isOffline {
+                Label("Offline", systemImage: "wifi.slash")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.quaternary, in: Capsule())
+                    .padding(.horizontal, 10)
+                    .help("Showing what's on this Mac. Downloads play; streaming resumes when you're back online.")
+                    .transition(.opacity)
+            }
+            serverMenu
+        }
+        .animation(.easeInOut(duration: 0.2), value: app.isOffline)
+    }
+
+    private var serverMenu: some View {
         Menu {
             ForEach(app.servers) { server in
                 Button {
@@ -355,16 +375,6 @@ struct MainView: View {
             HStack(spacing: 6) {
                 Image(systemName: "server.rack")
                 Text(app.activeServer?.name ?? "Server").lineLimit(1)
-                if app.isOffline {
-                    Text("Offline")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(.quaternary, in: Capsule())
-                        .help("Showing what's on this Mac. Downloads play; streaming resumes when you're back online.")
-                        .accessibilityLabel("Offline")
-                }
                 Spacer()
                 Image(systemName: "chevron.up.chevron.down").font(.caption2)
             }

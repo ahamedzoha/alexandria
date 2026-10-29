@@ -100,6 +100,7 @@ struct HomeHeroCard: View {
                         .strokeBorder(Theme.hairline))
             }
             .buttonStyle(.plain)
+            .offlineAvailability(app.playableOffline(itemID: entry.item.id, episodeID: entry.episode?.id))
             .hoverLift()
 
             VStack(alignment: .leading, spacing: 8) {
