@@ -54,6 +54,10 @@ struct PendingProgress: Codable, Sendable, Equatable {
 final class DownloadStore {
     var downloadedBooks: [DownloadedBook] = []
     var activeDownloads: [String: Double] = [:]   // itemID or "itemID|episodeID" -> 0...1 progress
+    /// Bytes on disk per download (keyed like `DownloadedBook.id`), and in
+    /// all — filled by refreshSizes(), for the Downloads page and Settings.
+    private(set) var sizes: [String: Int64] = [:]
+    private(set) var totalSize: Int64 = 0
     private(set) var pending: [String: PendingProgress] = [:]
     /// Set when index.json exists but wouldn't decode — sweepOrphans must not
     /// treat every folder as orphaned against an index we couldn't read.
@@ -232,10 +236,24 @@ final class DownloadStore {
             downloadedBooks.removeAll { $0.itemID == id && $0.episodeID == episodeID }
             downloadedBooks.append(book)
             persist()
+            Task { await refreshSizes() }
         } catch {
             try? FileManager.default.removeItem(at: trackDir(id, episodeID: episodeID))   // clean partial download
             throw error
         }
+    }
+
+    /// Measure what's on disk, off the main thread.
+    func refreshSizes() async {
+        let folders = downloadedBooks.map { ($0.id, trackDir($0.itemID, episodeID: $0.episodeID)) }
+        let roots = [baseDir.appendingPathComponent("audio", isDirectory: true), coverDir()]
+        let (perItem, total) = await Task.detached(priority: .utility) { () -> ([String: Int64], Int64) in
+            var perItem: [String: Int64] = [:]
+            for (id, folder) in folders { perItem[id] = directorySize(folder) }
+            return (perItem, roots.reduce(0) { $0 + directorySize($1) })
+        }.value
+        sizes = perItem
+        totalSize = total
     }
 
     func remove(_ itemID: String, episodeID: String? = nil) {
@@ -255,6 +273,7 @@ final class DownloadStore {
             if let cover { try? FileManager.default.removeItem(at: cover) }
         }
         persist()
+        Task { await refreshSizes() }
     }
 
     // MARK: Offline progress

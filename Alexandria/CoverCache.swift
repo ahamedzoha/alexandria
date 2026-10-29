@@ -61,7 +61,11 @@ final class CoverCache {
 
         let file = diskFile(for: url)
         var stale: NSImage?
-        if let file, let data = try? Data(contentsOf: file), let image = NSImage(data: data) {
+        if var file, let data = try? Data(contentsOf: file), let image = NSImage(data: data) {
+            // Last use, for trimming the least recently used first.
+            var used = URLResourceValues()
+            used.contentAccessDate = Date()
+            try? file.setResourceValues(used)
             let written = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
             if let written, Date().timeIntervalSince(written) < diskLifetime { return image }
             stale = image
@@ -101,6 +105,58 @@ final class CoverCache {
             try? await Task.sleep(nanoseconds: UInt64(200_000_000) * UInt64(attempt + 1))
         }
         return nil
+    }
+
+    // MARK: Size limit (Settings ▸ Storage)
+
+    /// The cover cache's cap in megabytes; ratings are tiny and ride along.
+    nonisolated static let limitKey = "coverCacheLimitMB"
+    nonisolated static var limitMB: Int {
+        let stored = UserDefaults.standard.integer(forKey: limitKey)
+        return stored > 0 ? stored : 250
+    }
+
+    private nonisolated static var cachesRoot: URL? {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+    }
+
+    /// Bytes in the cover and ratings caches.
+    nonisolated static func diskSize() -> Int64 {
+        guard let root = cachesRoot else { return 0 }
+        return directorySize(root.appendingPathComponent("Covers")) + directorySize(root.appendingPathComponent("Ratings"))
+    }
+
+    /// Delete the least recently used covers until the cache fits the limit.
+    nonisolated static func trimDisk(limitBytes: Int64 = Int64(limitMB) * 1_048_576) {
+        guard let dir = cachesRoot?.appendingPathComponent("Covers", isDirectory: true),
+              let files = try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.contentAccessDateKey, .totalFileAllocatedSizeKey]) else { return }
+        trim(files, to: limitBytes)
+    }
+
+    /// Pure over the files given, so the policy is testable.
+    nonisolated static func trim(_ files: [URL], to limitBytes: Int64) {
+        let keys: Set<URLResourceKey> = [.contentAccessDateKey, .totalFileAllocatedSizeKey]
+        var entries = files.map { file -> (URL, Date, Int64) in
+            let values = try? file.resourceValues(forKeys: keys)
+            return (file, values?.contentAccessDate ?? .distantPast, Int64(values?.totalFileAllocatedSize ?? 0))
+        }
+        var total = entries.reduce(0) { $0 + $1.2 }
+        guard total > limitBytes else { return }
+        entries.sort { $0.1 < $1.1 }   // oldest use first
+        for (file, _, size) in entries where total > limitBytes {
+            try? FileManager.default.removeItem(at: file)
+            total -= size
+        }
+    }
+
+    /// Settings ▸ Clear Cache: covers and ratings, on disk and in memory.
+    /// Downloads keep their own covers elsewhere.
+    func clearAll() {
+        memory.removeAllObjects()
+        guard let root = Self.cachesRoot else { return }
+        try? FileManager.default.removeItem(at: root.appendingPathComponent("Covers"))
+        try? FileManager.default.removeItem(at: root.appendingPathComponent("Ratings"))
     }
 
     /// Cache file for a URL — SHA256 of the normalized key keeps tokens and

@@ -7,6 +7,7 @@ enum SidebarSelection: Hashable {
     case series
     case narrators
     case stats
+    case downloads
 }
 
 struct MainView: View {
@@ -29,6 +30,10 @@ struct MainView: View {
                     ForEach(app.libraries) { library in
                         Label(library.name, systemImage: icon(for: library))
                             .tag(SidebarSelection.library(library.id))
+                    }
+                    if !app.downloads.downloadedBooks.isEmpty || app.isOffline {
+                        Label("Downloads", systemImage: "arrow.down.circle")
+                            .tag(SidebarSelection.downloads)
                     }
                 }
                 Section("Browse") {
@@ -212,6 +217,7 @@ struct MainView: View {
             case .series: SeriesGridView()
             case .narrators: PeopleGridView(kind: .narrators)
             case .stats: StatsView()
+            case .downloads: DownloadsView()
             }
         }
         .transition(.opacity)
@@ -377,6 +383,7 @@ struct MainView: View {
                 case .series: return .series
                 case .narrators: return .narrators
                 case .stats: return .stats
+                case .downloads: return .downloads
                 }
             },
             set: { selection in
@@ -391,6 +398,7 @@ struct MainView: View {
                 case .series: app.sidebar = .series
                 case .narrators: app.sidebar = .narrators
                 case .stats: app.sidebar = .stats
+                case .downloads: app.sidebar = .downloads
                 }
             }
         )
@@ -405,6 +413,7 @@ struct MainView: View {
         case .series: return "Series"
         case .narrators: return "Narrators"
         case .stats: return "Stats"
+        case .downloads: return "Downloads"
         }
     }
 

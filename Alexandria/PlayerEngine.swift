@@ -225,6 +225,10 @@ final class PlayerEngine {
         } else {
             item = AVPlayerItem(url: url)
         }
+        // Streaming keeps a rolling stretch of audio ahead in memory (Settings
+        // ▸ Playback), so a dropped connection doesn't stop the book. Nothing
+        // is written to disk; downloads don't need it.
+        if !url.isFileURL { item.preferredForwardBufferDuration = TimeInterval(Self.bufferMinutes * 60) }
         levelMeter.attach(to: item)
         // A track that can't load used to mean silence and nothing else.
         statusObservations.append(item.observe(\.status) { [weak self] item, _ in
@@ -495,6 +499,13 @@ final class PlayerEngine {
         volumeChangedAt = Date()
         NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
                              userInfo: [.announcement: "Volume \(Int((userVolume * 100).rounded())) percent"])
+    }
+
+    /// Settings ▸ Playback ▸ Buffer ahead while streaming (minutes).
+    nonisolated static let bufferMinutesKey = "streamBufferMinutes"
+    nonisolated static var bufferMinutes: Int {
+        let stored = UserDefaults.standard.integer(forKey: bufferMinutesKey)
+        return stored > 0 ? stored : 30
     }
 
     private static let volumeKey = "playerVolume"

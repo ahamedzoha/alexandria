@@ -69,6 +69,7 @@ final class AppState {
         case series
         case narrators
         case stats
+        case downloads
     }
 
     // Servers (tokens live in UserDefaults, keyed by server id — see tokenKey).
@@ -259,6 +260,8 @@ final class AppState {
         CoverCache.shared.authToken = token
         restoreSnapshot()   // the window opens on the last-known library, online or not
         if isLoggedIn { startSyncLoop() }
+        Task.detached(priority: .background) { CoverCache.trimDisk() }   // keep covers within Settings' limit
+        Task { await downloads.refreshSizes() }
     }
 
     // MARK: Offline snapshot
@@ -362,7 +365,7 @@ final class AppState {
             case .authors: result = result.filter { $0.author.localizedCaseInsensitiveContains(value) }
             case .narrators: result = result.filter { ($0.narrator ?? "").localizedCaseInsensitiveContains(value) }
             case .series: result = result.filter { $0.seriesBaseName == value }
-            case .library, .stats, .home: break
+            case .library, .stats, .home, .downloads: break
             }
         }
 
@@ -836,7 +839,7 @@ final class AppState {
         case .authors: return "Author · \(value)"
         case .narrators: return "Narrator · \(value)"
         case .series: return "Series · \(value)"
-        case .library, .stats, .home: return nil
+        case .library, .stats, .home, .downloads: return nil
         }
     }
 
@@ -1450,6 +1453,49 @@ final class AppState {
             scheduleSnapshot()
         } catch {
             presentFailure("Couldn't Download “\(title)”", error)
+        }
+    }
+
+    /// The library item behind a download, from wherever Alexandria has seen
+    /// it — or, for a download older than the offline snapshot, one rebuilt
+    /// from the download's own record so it still plays.
+    func knownItem(for download: DownloadedBook) -> LibraryItem? {
+        if let item = item(byID: download.itemID) ?? itemsByID[download.itemID] { return item }
+        let media = download.episodeID == nil ? "book" : "podcast"
+        let json: [String: Any] = ["id": download.itemID, "mediaType": media,
+                                   "media": ["metadata": ["title": download.title, "authorName": download.author]]]
+        guard let data = try? JSONSerialization.data(withJSONObject: json) else { return nil }
+        return try? JSONDecoder().decode(LibraryItem.self, from: data)
+    }
+
+    /// The episode behind a podcast download, when its list is known.
+    func knownEpisode(for download: DownloadedBook) -> PodcastEpisode? {
+        guard let episodeID = download.episodeID else { return nil }
+        return episodesByItem[download.itemID]?.first { $0.id == episodeID }
+            ?? episodeResumes.first { $0.item.id == download.itemID && $0.episode.id == episodeID }?.episode
+            ?? fetchedRecentEpisodes.first { $0.libraryItemId == download.itemID && $0.id == episodeID }
+    }
+
+    /// Downloads already listened to the end.
+    var finishedDownloads: [DownloadedBook] {
+        downloads.downloadedBooks.filter { progress(itemID: $0.itemID, episodeID: $0.episodeID)?.isFinished == true }
+    }
+
+    func removeDownloads(_ list: [DownloadedBook]) {
+        for book in list { downloads.remove(book.itemID, episodeID: book.episodeID) }
+    }
+
+    /// Settings ▸ Playback ▸ Buffer ahead while streaming, in minutes.
+    var streamBufferMinutes: Int = PlayerEngine.bufferMinutes {
+        didSet { UserDefaults.standard.set(streamBufferMinutes, forKey: PlayerEngine.bufferMinutesKey) }
+    }
+
+    /// Settings ▸ Storage ▸ the cover cache limit, in megabytes.
+    var coverCacheLimitMB: Int = CoverCache.limitMB {
+        didSet {
+            UserDefaults.standard.set(coverCacheLimitMB, forKey: CoverCache.limitKey)
+            let limit = Int64(coverCacheLimitMB) * 1_048_576
+            Task.detached(priority: .utility) { CoverCache.trimDisk(limitBytes: limit) }
         }
     }
 
