@@ -1460,7 +1460,12 @@ final class AppState {
     /// it — or, for a download older than the offline snapshot, one rebuilt
     /// from the download's own record so it still plays.
     func knownItem(for download: DownloadedBook) -> LibraryItem? {
-        if let item = item(byID: download.itemID) ?? itemsByID[download.itemID] { return item }
+        item(byID: download.itemID) ?? itemsByID[download.itemID] ?? Self.rebuiltItem(for: download)
+    }
+
+    /// A minimal item from a download's own record (id, title, author, kind),
+    /// through the same decoder the server's items use.
+    nonisolated static func rebuiltItem(for download: DownloadedBook) -> LibraryItem? {
         let media = download.episodeID == nil ? "book" : "podcast"
         let json: [String: Any] = ["id": download.itemID, "mediaType": media,
                                    "media": ["metadata": ["title": download.title, "authorName": download.author]]]

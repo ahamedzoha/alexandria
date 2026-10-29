@@ -37,6 +37,8 @@ The Mac-native audiobookshelf client. Other clients are iOS-first or wrap the we
 - **Sound:** per book or per series, Original / Voice Boost (louder, steadier, clearer) / Restore (plus ML voice isolation against tape hiss), with hold-to-compare and fine-tune sliders. Built from Apple's own audio units in the playback tap; nothing leaves the Mac.
 - **Now Playing inspector:** details, chapters, and opt-in ratings and reviews from Audible and Open Library (spoilers collapsed).
 - **Search:** global dropdown with keyboard navigation, ⌘F from anywhere.
+- **Keyboard:** Space play/pause, ←/→ skip 15/30, ⇧←/⇧→ chapters, ⌘↑/⌘↓ volume, ⌥⌘=/−/0 speed, ⌥⌘S sleep at end of chapter; media keys and AirPods taps skip.
+- **Offline:** each server's library is saved as a snapshot, so the app opens and browses offline (an Offline badge; what isn't downloaded is dimmed); a Downloads page; streaming buffers 10–30 minutes ahead in memory; Settings ▸ Storage shows and limits what's kept. Space-conservative by design: no automatic downloads, no disk stream cache.
 - **Durable constraints:**
   - Free and open source; no pricing or paid tiers.
   - Distributed outside the App Store: GitHub Releases plus Sparkle, ad-hoc signed, not notarized.

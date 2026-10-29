@@ -173,6 +173,11 @@ Continuous (squircle) corners everywhere, sized by what they round: `tile` (4pt)
 - **Where:** the Now Playing bar, between the sleep timer and speed; the button wears the cover's accent when a book plays enhanced.
 - **Style:** the same plain rows as the sleep timer — a checkmark, the preset's name and a one-line description — then a bordered Hold to Compare button, a "Use for all of *Series*" checkbox, and a Fine-Tune disclosure of three small sliders with their values in monospaced digits.
 
+### Offline
+- **Badge:** a small secondary "Offline" capsule next to the server name in the sidebar footer, with a tooltip; nothing louder.
+- **Unavailable items:** covers and episode rows that can't play offline fade to 45% in grayscale; everything stays browsable.
+- **Downloads page:** a native inset list (books, then a section per show) with a summary row — count, size on this Mac, Remove Finished.
+
 ### Lists and tables
 - **Selection:** native `List(selection:)` and `Table(selection:)`; Return or a double-click opens or plays, Delete removes, right-click acts on the whole selection.
 
