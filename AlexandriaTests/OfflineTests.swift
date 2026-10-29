@@ -139,3 +139,32 @@ final class DownloadsPageTests: XCTestCase {
         XCTAssertFalse(item.isPodcast)
     }
 }
+
+/// Items fetched one at a time (GET api/items/{id}) list their authors,
+/// narrators and series instead of joining them.
+final class FullItemShapeTests: XCTestCase {
+    func testTheFullItemShapeStillNamesAuthorsAndSeries() throws {
+        let json = """
+        { "id": "b1", "mediaType": "book", "media": { "metadata": {
+            "title": "The Gunslinger",
+            "authors": [{ "id": "a1", "name": "Stephen King" }],
+            "narrators": ["George Guidall"],
+            "series": [{ "id": "s1", "name": "The Dark Tower", "sequence": "1" }] } } }
+        """
+        let item = try JSONDecoder().decode(LibraryItem.self, from: Data(json.utf8))
+        XCTAssertEqual(item.author, "Stephen King")
+        XCTAssertEqual(item.narrator, "George Guidall")
+        XCTAssertEqual(item.seriesBaseName, "The Dark Tower")
+        XCTAssertEqual(item.seriesSequence(in: "The Dark Tower"), 1)
+    }
+
+    func testAnUnexpectedListShapeDoesNotFailTheItem() throws {
+        let json = """
+        { "id": "b2", "mediaType": "book", "media": { "metadata": {
+            "title": "Odd", "authorName": "Someone", "series": "not a list" } } }
+        """
+        let item = try JSONDecoder().decode(LibraryItem.self, from: Data(json.utf8))
+        XCTAssertEqual(item.author, "Someone")
+        XCTAssertNil(item.seriesBaseName)
+    }
+}

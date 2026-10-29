@@ -208,7 +208,12 @@ struct APIClient: Sendable {
     /// Single library item by id (the minified shape decodes into LibraryItem).
     /// Used by AppState.resolveItem for items outside the loaded lists.
     func item(itemID: String) async throws -> LibraryItem {
-        let req = try request("api/items/\(itemID)")
+        // Expanded carries the joined authorName / seriesName the app reads.
+        var req = try request("api/items/\(itemID)")
+        if let url = req.url, var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            comps.queryItems = [URLQueryItem(name: "expanded", value: "1")]
+            if let u = comps.url { req.url = u }
+        }
         return try await send(req, as: LibraryItem.self)
     }
 

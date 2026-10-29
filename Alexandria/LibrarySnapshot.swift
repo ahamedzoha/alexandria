@@ -9,7 +9,8 @@ struct LibrarySnapshot: Codable, Sendable {
         let progress: AppState.ItemProgress
     }
 
-    static let currentVersion = 1
+    // 2: items looked up one at a time now carry their authors and series.
+    static let currentVersion = 2
 
     var version = LibrarySnapshot.currentVersion
     var libraries: [Library] = []

@@ -50,18 +50,47 @@ struct LibraryItem: Codable, Identifiable, Sendable, Hashable {   // Codable: Up
         let seriesName: String?
         let description: String?
         let type: String?         // podcasts: "episodic" | "serial"
+        // The full item shape (GET api/items/{id}) carries lists instead of
+        // the joined names above. Lenient: a shape that doesn't match is
+        // simply absent rather than failing the whole item.
+        let authors: LenientList<Named>?
+        let narrators: LenientList<String>?
+        let series: LenientList<SeriesRef>?
+
+        struct Named: Codable, Sendable, Hashable { let name: String? }
+        struct SeriesRef: Codable, Sendable, Hashable { let name: String?; let sequence: String? }
+
+        /// "A, B" from either shape.
+        var authorNames: String? {
+            authorName ?? authors.flatMap { joined($0.items.compactMap(\.name)) }
+        }
+        var narratorNames: String? {
+            narratorName ?? narrators.flatMap { joined($0.items) }
+        }
+        /// "The Dark Tower #1, Other #3" from either shape.
+        var seriesNames: String? {
+            seriesName ?? series.flatMap { list in
+                joined(list.items.compactMap { ref in
+                    ref.name.map { name in ref.sequence.map { "\(name) #\($0)" } ?? name }
+                })
+            }
+        }
+
+        private func joined(_ names: [String]) -> String? {
+            names.isEmpty ? nil : names.joined(separator: ", ")
+        }
     }
 
     var title: String { media?.metadata?.title ?? "Untitled" }
-    var author: String { media?.metadata?.authorName ?? media?.metadata?.author ?? "Unknown author" }
-    var narrator: String? { media?.metadata?.narratorName }
+    var author: String { media?.metadata?.authorNames ?? media?.metadata?.author ?? "Unknown author" }
+    var narrator: String? { media?.metadata?.narratorNames }
     var duration: Double? { media?.duration }
     var numEpisodes: Int? { media?.numEpisodes }
     var isPodcast: Bool { mediaType == "podcast" }
 
     /// "Harry Potter #2" -> "Harry Potter" (drops the trailing sequence number).
     var seriesBaseName: String? {
-        guard let raw = media?.metadata?.seriesName, !raw.isEmpty else { return nil }
+        guard let raw = media?.metadata?.seriesNames, !raw.isEmpty else { return nil }
         if let hash = raw.range(of: " #") {
             return String(raw[raw.startIndex..<hash.lowerBound])
         }
@@ -72,7 +101,7 @@ struct LibraryItem: Codable, Identifiable, Sendable, Hashable {   // Codable: Up
     /// seriesName lists every series a book belongs to ("A #2, B #5"), and
     /// sequences can be fractional ("1.5" for a novella).
     func seriesSequence(in series: String) -> Double? {
-        guard let raw = media?.metadata?.seriesName else { return nil }
+        guard let raw = media?.metadata?.seriesNames else { return nil }
         for entry in raw.components(separatedBy: ", ") {
             guard let hash = entry.range(of: " #", options: .backwards),
                   entry[..<hash.lowerBound] == series else { continue }
@@ -306,5 +335,19 @@ struct MediaProgress: Decodable, Sendable {
             return min(1, max(0, currentTime / duration))
         }
         return progress ?? 0
+    }
+}
+
+/// A list that decodes to nil instead of failing when the server sends
+/// something else in its place.
+struct LenientList<Element: Codable & Sendable & Hashable>: Codable, Sendable, Hashable {
+    let items: [Element]
+
+    init(from decoder: Decoder) throws {
+        items = (try? [Element](from: decoder)) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        try items.encode(to: encoder)
     }
 }
