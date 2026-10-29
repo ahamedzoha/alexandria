@@ -153,3 +153,24 @@ private struct HoverLift: ViewModifier {
             .onHover { hovering = $0 }
     }
 }
+
+extension View {
+    /// Offline, what can't play here — not downloaded — steps back: faded,
+    /// in grayscale, with a tooltip saying why. Online it's untouched.
+    func offlineAvailability(_ available: Bool) -> some View {
+        modifier(OfflineAvailability(available: available))
+    }
+}
+
+private struct OfflineAvailability: ViewModifier {
+    @Environment(AppState.self) private var app
+    let available: Bool
+
+    func body(content: Content) -> some View {
+        let dimmed = app.isOffline && !available
+        content
+            .saturation(dimmed ? 0 : 1)
+            .opacity(dimmed ? 0.45 : 1)
+            .help(dimmed ? "Not downloaded — plays when you're back online" : "")
+    }
+}

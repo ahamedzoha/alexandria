@@ -5,7 +5,7 @@ import Observation
 @MainActor
 @Observable
 final class AppState {
-    struct ItemProgress: Sendable {
+    struct ItemProgress: Codable, Sendable {
         var fraction: Double
         var isFinished: Bool
         var lastUpdate: Double = 0   // epoch ms of the last progress update
@@ -21,13 +21,13 @@ final class AppState {
     }
 
     // Progress is keyed per item + episode (episodeID nil for book/item-level).
-    struct ProgressKey: Hashable { let itemID: String; let episodeID: String? }
+    struct ProgressKey: Hashable, Codable, Sendable { let itemID: String; let episodeID: String? }
 
     /// An in-progress podcast episode resolved to its owning show, ready for
     /// the Home continue surfaces (hero + Continue Listening shelf). Progress
     /// itself is looked up live in `progressByItem` — this only carries the
     /// metadata that needs async resolution.
-    struct EpisodeResume: Identifiable, Sendable {
+    struct EpisodeResume: Identifiable, Codable, Sendable {
         let episode: PodcastEpisode
         let item: LibraryItem
         var id: String { "\(item.id)|\(episode.id)" }
@@ -155,6 +155,14 @@ final class AppState {
     @ObservationIgnored private var didBecomeActiveObserver: (any NSObjectProtocol)?
     var isLoading = false
     var errorMessage: String?
+    /// The server couldn't be reached on the last try; the library shown is
+    /// the saved snapshot. Cleared by the next request that gets through.
+    var isOffline = false
+    let snapshots = LibrarySnapshotStore()
+    // Each library's items as last loaded (also the snapshot's), so a
+    // library picked while offline still shows its books.
+    @ObservationIgnored private var cachedItemsByLibrary: [String: [LibraryItem]] = [:]
+    @ObservationIgnored private var snapshotTask: Task<Void, Never>?
     /// A failed action the user started (play, download), shown once as an alert.
     var actionError: ActionFailure?
     /// The server rejected the saved sign-in; MainView offers Sign In Again.
@@ -249,7 +257,83 @@ final class AppState {
         loadServers()
         queue.bind(to: activeServerID)
         CoverCache.shared.authToken = token
+        restoreSnapshot()   // the window opens on the last-known library, online or not
         if isLoggedIn { startSyncLoop() }
+    }
+
+    // MARK: Offline snapshot
+
+    /// Fill the library from this server's saved snapshot. The network then
+    /// refreshes over it; offline, it's what there is.
+    private func restoreSnapshot() {
+        guard let server = activeServerID, let snapshot = snapshots.load(serverID: server) else { return }
+        libraries = snapshot.libraries
+        if selectedLibraryID == nil { selectedLibraryID = snapshot.selectedLibraryID ?? libraries.first?.id }
+        cachedItemsByLibrary = snapshot.itemsByLibrary
+        items = selectedLibraryID.flatMap { snapshot.itemsByLibrary[$0] } ?? []
+        recentItems = snapshot.recentItems
+        progressByItem = snapshot.progressMap
+        episodesByItem = snapshot.episodesByItem
+        episodeResumes = snapshot.episodeResumes
+        fetchedRecentEpisodes = snapshot.recentEpisodes
+        for item in snapshot.extraItems { itemsByID[item.id] = item }
+        otherLibraryResumes = Self.bookResumeCandidates(in: progressByItem)
+            .compactMap { id in items.contains { $0.id == id } ? nil : itemsByID[id] }
+            .filter { !$0.isPodcast }
+    }
+
+    /// Save the library a couple of seconds after it last changed — one
+    /// write per burst of loads, encoded and written off the main thread.
+    private func scheduleSnapshot() {
+        guard let server = activeServerID, !libraries.isEmpty else { return }
+        snapshotTask?.cancel()
+        snapshotTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled, let self, self.activeServerID == server else { return }
+            let snapshot = self.makeSnapshot()
+            let store = self.snapshots
+            await Task.detached(priority: .utility) {
+                try? store.save(snapshot, serverID: server)
+            }.value
+        }
+    }
+
+    private func makeSnapshot() -> LibrarySnapshot {
+        var extra: [String: LibraryItem] = itemsByID
+        for item in otherLibraryResumes { extra[item.id] = item }
+        for resume in episodeResumes { extra[resume.item.id] = resume.item }
+        if let playingItem { extra[playingItem.id] = playingItem }
+        // Downloads must stay playable offline even if their library was
+        // never the one loaded.
+        for book in downloads.downloadedBooks where extra[book.itemID] == nil {
+            if let item = item(byID: book.itemID) { extra[book.itemID] = item }
+        }
+        // Episode lists only for shows that matter offline: in progress,
+        // downloaded, or in the loaded library.
+        let keepShows = Set(progressByItem.keys.filter { $0.episodeID != nil }.map(\.itemID))
+            .union(downloads.downloadedBooks.filter { $0.episodeID != nil }.map(\.itemID))
+            .union(items.filter(\.isPodcast).map(\.id))
+        return LibrarySnapshot(
+            libraries: libraries,
+            selectedLibraryID: selectedLibraryID,
+            itemsByLibrary: cachedItemsByLibrary,
+            recentItems: recentItems,
+            progress: progressByItem.map { LibrarySnapshot.ProgressRow(key: $0.key, progress: $0.value) },
+            episodesByItem: episodesByItem.filter { keepShows.contains($0.key) },
+            episodeResumes: episodeResumes,
+            recentEpisodes: fetchedRecentEpisodes,
+            extraItems: Array(extra.values)
+        )
+    }
+
+    /// A request outcome: anything that reached the server means online;
+    /// a transport failure means offline.
+    func noteReachability(_ error: Error?) {
+        if let error {
+            if (error as? APIError)?.unreachable == true { isOffline = true }
+        } else {
+            isOffline = false
+        }
     }
 
     // MARK: Active server
@@ -387,6 +471,7 @@ final class AppState {
             persistServers()
             CoverCache.shared.authToken = token
             resetLibraryState()
+            restoreSnapshot()   // signing in again to a known server
             sessionExpired = false
             reauthDeclined = false
             justSignedIn = true
@@ -406,6 +491,7 @@ final class AppState {
         persistServers()
         CoverCache.shared.authToken = token
         resetLibraryState()
+        restoreSnapshot()
         startSyncLoop()
         await loadLibraries()
     }
@@ -418,6 +504,7 @@ final class AppState {
         servers.removeAll { $0.id == id }
         downloads.dropPending(serverID: id)
         queue.forget(serverID: id)
+        snapshots.remove(serverID: id)
         persistServers()
         // Removing a server you aren't using leaves the current view alone.
         guard wasActive else { return }
@@ -425,6 +512,7 @@ final class AppState {
         persistServers()
         CoverCache.shared.authToken = token
         resetLibraryState()
+        restoreSnapshot()
         if activeServerID != nil {
             Task { await loadLibraries() }
         } else {
@@ -447,6 +535,9 @@ final class AppState {
         episodeResumes = []
         otherLibraryResumes = []
         playingItem = nil
+        isOffline = false
+        cachedItemsByLibrary = [:]
+        snapshotTask?.cancel()
         unresolvedResumeRows = []
         itemsByID = [:]
         itemDetailCache = [:]
@@ -549,6 +640,7 @@ final class AppState {
         do {
             let fetched = try await api.libraries()
             guard activeServerID == server else { return }   // switched mid-flight
+            noteReachability(nil)
             libraries = fetched
             if selectedLibraryID == nil { selectedLibraryID = libraries.first?.id }
             await loadProgress()
@@ -558,8 +650,12 @@ final class AppState {
             // in the just-loaded items for free.
             if let id = selectedLibraryID { await loadItems(libraryID: id) }
             await refreshResumes()
+            scheduleSnapshot()
         } catch {
             guard activeServerID == server else { return }
+            noteReachability(error)
+            // With a saved library, offline is a state, not an error.
+            if isOffline, !libraries.isEmpty { return }
             report(error)
         }
     }
@@ -625,10 +721,14 @@ final class AppState {
             list = try await api.mediaProgress()
         } catch {
             // The 45s sync is usually first to notice an expired sign-in.
-            if activeServerID == server { noteAuthFailure(error) }
+            if activeServerID == server {
+                noteAuthFailure(error)
+                noteReachability(error)
+            }
             return
         }
         guard activeServerID == server else { return }
+        noteReachability(nil)
         var map: [ProgressKey: ItemProgress] = [:]
         for entry in list {
             guard let id = entry.libraryItemId else { continue }
@@ -640,6 +740,7 @@ final class AppState {
         }
         progressByItem = Self.mergedProgress(server: map, local: progressByItem,
                                              now: Date().timeIntervalSince1970 * 1000)
+        scheduleSnapshot()
     }
 
     /// Server rows win unless this Mac holds something newer the server hasn't
@@ -691,11 +792,20 @@ final class AppState {
         guard activeServerID == server, selectedLibraryID == libraryID else { return }
         switch result {
         case .success(let loaded):
+            noteReachability(nil)
             items = loaded
+            cachedItemsByLibrary[libraryID] = loaded
+            scheduleSnapshot()
             // Books that just left (or joined) the loaded set move between
             // `items` and otherLibraryResumes.
             Task { await refreshResumes() }
-        case .failure(let error): report(error)
+        case .failure(let error):
+            noteReachability(error)
+            if isOffline, let cached = cachedItemsByLibrary[libraryID] {
+                items = cached
+            } else {
+                report(error)
+            }
         }
     }
 
@@ -851,7 +961,7 @@ final class AppState {
     func loadRecentItems() async {
         guard let id = selectedLibraryID ?? libraries.first?.id else { return }
         let server = activeServerID
-        let loaded = (try? await api.recentlyAdded(libraryID: id, limit: 20)) ?? []
+        guard let loaded = try? await api.recentlyAdded(libraryID: id, limit: 20) else { return }
         guard activeServerID == server, (selectedLibraryID ?? libraries.first?.id) == id else { return }
         recentItems = loaded
     }
@@ -973,7 +1083,9 @@ final class AppState {
         do {
             let expanded = try await api.fetchItemExpanded(itemID: itemID)
             guard activeServerID == server else { return }   // switched mid-flight
+            noteReachability(nil)
             episodesByItem[itemID] = expanded.episodes
+            scheduleSnapshot()
             episodesLoadFailed.remove(itemID)
             for entry in expanded.userMediaProgress ?? [] {
                 let key = ProgressKey(itemID: itemID, episodeID: entry.episodeId)
@@ -990,7 +1102,11 @@ final class AppState {
             // episodesLoadFailed here would show a "Couldn't Load Episodes"
             // retry state for a show the user never opened, off a server blip
             // they never saw.
-            guard !quiet, activeServerID == server, !(error is CancellationError) else { return }
+            guard activeServerID == server else { return }
+            noteReachability(error)
+            guard !quiet, !(error is CancellationError) else { return }
+            // Offline with the list saved: show it, quietly.
+            if isOffline, episodesByItem[itemID] != nil { return }
             episodesLoadFailed.insert(itemID)
             report(error)
         }
@@ -1326,9 +1442,22 @@ final class AppState {
                 token: token,
                 coverURL: coverURL(itemID: item.id)
             )
+            itemsByID[item.id] = item   // so it stays playable offline (snapshot)
+            if let episode, var list = episodesByItem[item.id], !list.contains(where: { $0.id == episode.id }) {
+                list.append(episode)
+                episodesByItem[item.id] = list
+            }
+            scheduleSnapshot()
         } catch {
             presentFailure("Couldn't Download “\(title)”", error)
         }
+    }
+
+    /// Whether this plays with no server: downloaded (a show counts when any
+    /// of its episodes is).
+    func playableOffline(itemID: String, episodeID: String? = nil, isShow: Bool = false) -> Bool {
+        if isShow { return downloads.downloadedBooks.contains { $0.itemID == itemID } }
+        return downloads.isDownloaded(itemID, episodeID: episodeID)
     }
 
     func removeDownload(itemID: String, episodeID: String? = nil) {

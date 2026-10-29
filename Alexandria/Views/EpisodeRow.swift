@@ -66,6 +66,7 @@ struct EpisodeRow: View {
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { isCurrent ? player.play() : play() }
         .contextMenu { menuItems }
+        .offlineAvailability(isDownloaded)
         .queueDraggable(item, episode: episode)
         .accessibilityElement(children: .contain)
         .accessibilityAction(named: "Play") { play() }

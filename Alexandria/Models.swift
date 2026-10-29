@@ -16,7 +16,7 @@ struct LibrariesResponse: Decodable, Sendable {
     let libraries: [Library]
 }
 
-struct Library: Decodable, Identifiable, Sendable, Hashable {
+struct Library: Codable, Identifiable, Sendable, Hashable {   // Codable: saved in LibrarySnapshot
     let id: String
     let name: String
     let mediaType: String?

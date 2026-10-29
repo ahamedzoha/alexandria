@@ -198,6 +198,7 @@ struct CoverCell: View {
         .hoverLift()
         .onHover { hovering = $0 }
         .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: revealed)
+        .offlineAvailability(app.playableOffline(itemID: item.id, isShow: item.isPodcast))
         // The palette only feeds the in-progress accent line, so skip
         // extraction for the (vast) majority of tiles that don't need it.
         // The id flips to the URL when progress appears, triggering the fetch.

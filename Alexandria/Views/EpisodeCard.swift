@@ -62,6 +62,9 @@ struct EpisodeCard: View {
             .hoverLift()
             .onHover { hovering = $0 }
             .animation(.easeOut(duration: 0.15), value: hovering)
+            .offlineAvailability(episode.libraryItemId.map {
+                app.playableOffline(itemID: $0, episodeID: episode.id)
+            } ?? false)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(episode.displayTitle)

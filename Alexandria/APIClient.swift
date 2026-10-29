@@ -6,6 +6,9 @@ struct APIError: Error, Sendable {
     /// A 401 on an authenticated request: the saved sign-in is no longer
     /// valid (as opposed to a wrong password at login).
     var tokenRejected = false
+    /// The request never reached the server (no network, server down, DNS,
+    /// timeout) — the app is offline as far as this server goes.
+    var unreachable = false
 }
 
 /// Thin async wrapper over the audiobookshelf REST API.
@@ -70,7 +73,8 @@ struct APIClient: Sendable {
             #if DEBUG
             print("[Alexandria] network error for \(req.url?.absoluteString ?? "?"): \(error)")
             #endif
-            throw APIError(message: "Could not reach server. Check the URL and that the server is running.")
+            throw APIError(message: "Could not reach server. Check the URL and that the server is running.",
+                           unreachable: true)
         }
         guard let http = resp as? HTTPURLResponse else { throw APIError(message: "No response from server.") }
         guard (200..<300).contains(http.statusCode) else {

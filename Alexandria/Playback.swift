@@ -39,8 +39,17 @@ func startPlayback(item: LibraryItem, episode: PodcastEpisode? = nil, startAt: D
         } else {
             do {
                 info = try await app.playSession(itemID: item.id, episodeID: episode?.id)
+                app.noteReachability(nil)
             } catch {
-                if !Task.isCancelled { app.presentFailure("Couldn't Play “\(title)”", error) }
+                app.noteReachability(error)
+                if Task.isCancelled {
+                    // superseded by a newer start
+                } else if (error as? APIError)?.unreachable == true {
+                    app.presentFailure("“\(title)” Isn't Downloaded", APIError(
+                        message: "Connect to your server to stream it, or download it while you're online to listen anywhere."))
+                } else {
+                    app.presentFailure("Couldn't Play “\(title)”", error)
+                }
                 onResult?(false)
                 return
             }

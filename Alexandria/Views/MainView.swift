@@ -349,6 +349,16 @@ struct MainView: View {
             HStack(spacing: 6) {
                 Image(systemName: "server.rack")
                 Text(app.activeServer?.name ?? "Server").lineLimit(1)
+                if app.isOffline {
+                    Text("Offline")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(.quaternary, in: Capsule())
+                        .help("Showing what's on this Mac. Downloads play; streaming resumes when you're back online.")
+                        .accessibilityLabel("Offline")
+                }
                 Spacer()
                 Image(systemName: "chevron.up.chevron.down").font(.caption2)
             }
