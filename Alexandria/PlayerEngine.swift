@@ -50,6 +50,18 @@ final class PlayerEngine {
     var currentTime: Double = 0   // seconds into the whole book
     var duration: Double = 0      // whole-book duration
     var rate: Float = 1.0
+    /// The speeds offered in the speed popover and stepped through by ⌥⌘= / ⌥⌘−.
+    nonisolated static let rates: [Float] = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
+    /// Your volume (⌘↑ / ⌘↓), 0…1, remembered between launches. The player
+    /// plays at this times the sleep timer's fade.
+    private(set) var userVolume: Float = PlayerEngine.storedVolume
+    /// Set by a volume change, so the Now Playing bar can flash the level.
+    private(set) var volumeChangedAt: Date?
+    /// 1 except in a sleep timer's last five seconds, when it fades to 0.
+    @ObservationIgnored private var fadeLevel: Float = 1 {
+        didSet { if fadeLevel != oldValue { player?.volume = effectiveVolume } }
+    }
+    private var effectiveVolume: Float { userVolume * fadeLevel }
     /// Set when the audio itself fails (a track 404s, the network drops, an
     /// unplayable file); MainView shows it once. Nil again after.
     var playbackError: String?
@@ -159,7 +171,7 @@ final class PlayerEngine {
         // A minute timer or an "end of next episode" count carries on into
         // the next item (a queue advance used to cancel it); a chapter
         // position belonged to the old item.
-        if case .at = sleepTimer { sleepTimer = .off; self.player?.volume = 1 }
+        if case .at = sleepTimer { sleepTimer = .off; fadeLevel = 1 }
 
         duration = session.duration ?? ((allOffsets.last ?? 0) + (sorted.last?.duration ?? 0))
         chapters = Self.chapters(from: session.chapters ?? [], duration: duration)
@@ -181,9 +193,6 @@ final class PlayerEngine {
         // Before creating items: each new item registers a failure watcher,
         // which removeObservers() would otherwise cancel straight away.
         removeObservers()
-        // A seek into another track lands here mid-fade: the new player keeps
-        // the sleep timer's volume rather than jumping back to full.
-        let volume = player?.volume ?? 1
         player?.pause()
         var items: [AVPlayerItem] = []
         itemIndexMap.removeAll()
@@ -195,7 +204,9 @@ final class PlayerEngine {
 
         let queue = AVQueuePlayer(items: items)
         queue.automaticallyWaitsToMinimizeStalling = true
-        queue.volume = volume
+        // Your volume, times the sleep timer's fade — a seek into another
+        // track mid-fade doesn't jump back to full.
+        queue.volume = effectiveVolume
         player = queue
         addObservers()
     }
@@ -465,6 +476,32 @@ final class PlayerEngine {
 
     func skip(_ delta: Double) { seek(to: currentTime + delta) }
 
+    /// One step faster or slower through `rates`, staying in range.
+    func stepRate(faster: Bool) {
+        let rates = Self.rates
+        let next = faster ? rates.first { $0 > rate + 0.01 } : rates.last { $0 < rate - 0.01 }
+        if let next { setRate(next) }
+    }
+
+    /// ⌘↑ / ⌘↓: ten percent at a time.
+    func nudgeVolume(by delta: Float) {
+        setVolume(userVolume + delta)
+    }
+
+    func setVolume(_ volume: Float) {
+        userVolume = min(max(volume, 0), 1)
+        UserDefaults.standard.set(userVolume, forKey: Self.volumeKey)
+        player?.volume = effectiveVolume
+        volumeChangedAt = Date()
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: "Volume \(Int((userVolume * 100).rounded())) percent"])
+    }
+
+    private static let volumeKey = "playerVolume"
+    private static var storedVolume: Float {
+        UserDefaults.standard.object(forKey: volumeKey) == nil ? 1 : UserDefaults.standard.float(forKey: volumeKey)
+    }
+
     func setRate(_ newRate: Float) {
         rate = newRate
         if isPlaying { player?.rate = newRate }
@@ -495,14 +532,14 @@ final class PlayerEngine {
     // MARK: Sleep timer
 
     func setSleepTimer(minutes: Int) {
-        player?.volume = 1
+        fadeLevel = 1
         lastSleepTick = nil
         sleepTimer = .seconds(Double(minutes * 60))
     }
 
     /// Arm a content-shaped timer (see `sleepOptions`).
     func setSleep(_ timer: SleepTimer) {
-        player?.volume = 1
+        fadeLevel = 1
         lastSleepTick = nil
         sleepTimer = timer
     }
@@ -513,7 +550,7 @@ final class PlayerEngine {
         guard case .itemEnds(let remaining) = sleepTimer else { return true }
         if remaining <= 1 {
             sleepTimer = .off
-            player?.volume = 1
+            fadeLevel = 1
             return false
         }
         sleepTimer = .itemEnds(remaining - 1)
@@ -521,8 +558,17 @@ final class PlayerEngine {
     }
 
     func cancelSleepTimer() {
-        player?.volume = 1
+        fadeLevel = 1
         sleepTimer = .off
+    }
+
+    /// ⌥⌘S: stop at the end of this chapter (or of the episode / book when
+    /// there are no chapters); pressed again, cancel.
+    func toggleChapterSleep() {
+        if isSleepArmed { cancelSleepTimer(); return }
+        let options = Self.sleepOptions(chapters: chapters, currentTime: currentTime, duration: duration,
+                                        rate: rate, isEpisode: currentEpisodeID != nil, next: nil)
+        if let first = options.first { setSleep(first.timer) }
     }
 
     /// Called on every playback tick. Ticks follow the book's timeline —
@@ -574,13 +620,13 @@ final class PlayerEngine {
 
     /// The last five seconds before any stop point fade to silence.
     private func fadeOut(remaining: Double) {
-        if remaining <= 5 { player?.volume = Float(max(0, remaining) / 5) }
+        if remaining <= 5 { fadeLevel = Float(max(0, remaining) / 5) }
     }
 
     private func triggerSleep() {
         sleepTimer = .off
         pause()
-        player?.volume = 1
+        fadeLevel = 1
     }
 
     // MARK: Now Playing / remote commands
@@ -610,6 +656,23 @@ final class PlayerEngine {
         center.skipBackwardCommand.preferredIntervals = [15]
         center.skipBackwardCommand.addTarget { [weak self] _ in
             Self.onMain { self?.skip(-15) }
+            return .success
+        }
+        // The ⏭ / ⏮ keys and AirPods double / triple tap send next / previous
+        // track; in a book they mean skip, as in Podcasts.
+        center.nextTrackCommand.addTarget { [weak self] _ in
+            Self.onMain { self?.skip(30) }
+            return .success
+        }
+        center.previousTrackCommand.addTarget { [weak self] _ in
+            Self.onMain { self?.skip(-15) }
+            return .success
+        }
+        center.changePlaybackRateCommand.supportedPlaybackRates = Self.rates.map { NSNumber(value: $0) }
+        center.changePlaybackRateCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangePlaybackRateCommandEvent else { return .commandFailed }
+            let rate = event.playbackRate
+            Self.onMain { self?.setRate(rate) }
             return .success
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in

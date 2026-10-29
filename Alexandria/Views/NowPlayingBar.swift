@@ -13,6 +13,7 @@ struct NowPlayingBar: View {
     @State private var showSpeedPopover = false
     @State private var showSleepPopover = false
     @State private var showSoundPopover = false
+    @State private var showVolume = false
 
     var body: some View {
         if player.currentTitle.isEmpty {
@@ -30,9 +31,35 @@ struct NowPlayingBar: View {
             .padding(.horizontal, 12)
             .padding(.top, 6)
             .padding(.bottom, 10)
+            .overlay(alignment: .top) { volumeReadout }
+            .task(id: player.volumeChangedAt) {
+                guard player.volumeChangedAt != nil else { return }
+                withAnimation(.easeOut(duration: 0.15)) { showVolume = true }
+                try? await Task.sleep(for: .seconds(1.2))
+                withAnimation(.easeIn(duration: 0.3)) { showVolume = false }
+            }
             .task(id: player.coverURL) {
                 palette = await PaletteStore.shared.palette(for: player.coverURL)
             }
+        }
+    }
+
+    /// ⌘↑ / ⌘↓ feedback: the level, briefly, just above the bar.
+    @ViewBuilder private var volumeReadout: some View {
+        if showVolume {
+            let level = Int((player.userVolume * 100).rounded())
+            HStack(spacing: 6) {
+                Image(systemName: level == 0 ? "speaker.slash.fill" : "speaker.wave.3.fill",
+                      variableValue: Double(player.userVolume))
+                Text("\(level)%")
+            }
+                .font(.callout.monospacedDigit())
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .glassEffect(.regular, in: .capsule)
+                .offset(y: -34)
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 6)))
+                .accessibilityHidden(true)
         }
     }
 
@@ -144,7 +171,7 @@ struct NowPlayingBar: View {
         HStack(spacing: 2) {
             Button { player.prevChapter() } label: { Image(systemName: "backward.end.fill").iconHitTarget() }
                 .buttonStyle(.plain).disabled(player.chapters.isEmpty)
-                .help("Previous Chapter").accessibilityLabel("Previous Chapter")
+                .help("Previous Chapter (⇧←)").accessibilityLabel("Previous Chapter")
 
             Button { backSkips += 1; player.skip(-15) } label: {
                 Image(systemName: "gobackward.15")
@@ -152,7 +179,7 @@ struct NowPlayingBar: View {
                     .iconHitTarget()
             }
             .buttonStyle(.plain)
-            .help("Skip Back 15 Seconds").accessibilityLabel("Skip Back 15 Seconds")
+            .help("Skip Back 15 Seconds (←)").accessibilityLabel("Skip Back 15 Seconds")
 
             Button { player.toggle() } label: {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
@@ -169,11 +196,11 @@ struct NowPlayingBar: View {
                     .iconHitTarget()
             }
             .buttonStyle(.plain)
-            .help("Skip Forward 30 Seconds").accessibilityLabel("Skip Forward 30 Seconds")
+            .help("Skip Forward 30 Seconds (→)").accessibilityLabel("Skip Forward 30 Seconds")
 
             Button { player.nextChapter() } label: { Image(systemName: "forward.end.fill").iconHitTarget() }
                 .buttonStyle(.plain).disabled(player.chapters.isEmpty)
-                .help("Next Chapter").accessibilityLabel("Next Chapter")
+                .help("Next Chapter (⇧→)").accessibilityLabel("Next Chapter")
         }
         .fixedSize()
     }
@@ -205,7 +232,7 @@ struct NowPlayingBar: View {
         }
         .buttonStyle(.borderless)
         .fixedSize()
-        .help("Playback speed")
+        .help("Playback speed (⌥⌘= faster, ⌥⌘− slower)")
         .popover(isPresented: $showSpeedPopover) {
             SpeedPopover(accent: accent)
         }
@@ -248,7 +275,7 @@ struct NowPlayingBar: View {
         }
         .buttonStyle(.borderless)
         .fixedSize()
-        .help("Sleep timer")
+        .help("Sleep timer (⌥⌘S: end of chapter)")
         .popover(isPresented: $showSleepPopover) {
             SleepTimerPopover(accent: accent)
         }
@@ -383,7 +410,7 @@ struct SpeedPopover: View {
     @Environment(\.dismiss) private var dismiss
     let accent: Color
 
-    private static let rates: [Double] = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
+    private static let rates = PlayerEngine.rates.map(Double.init)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {

@@ -40,6 +40,16 @@ struct AlexandriaApp: App {
                 Button("Skip Back") { player.skip(-15) }
                     .keyboardShortcut("[", modifiers: .command)
                 Divider()
+                Button("Faster") { player.stepRate(faster: true) }
+                    .keyboardShortcut("=", modifiers: [.command, .option])
+                    .disabled(player.itemID.isEmpty || player.rate >= PlayerEngine.rates.last ?? 3)
+                Button("Slower") { player.stepRate(faster: false) }
+                    .keyboardShortcut("-", modifiers: [.command, .option])
+                    .disabled(player.itemID.isEmpty || player.rate <= PlayerEngine.rates.first ?? 0.75)
+                Button("Normal Speed") { player.setRate(1) }
+                    .keyboardShortcut("0", modifiers: [.command, .option])
+                    .disabled(player.itemID.isEmpty || player.rate == 1)
+                Divider()
                 // ⌥⌘, not ⌘: menu equivalents run before the text field, and
                 // ⌘←/⌘→ are its start/end-of-line keys (the search field).
                 Button("Next Chapter") { player.nextChapter() }
@@ -48,6 +58,20 @@ struct AlexandriaApp: App {
                 Button("Previous Chapter") { player.prevChapter() }
                     .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
                     .disabled(player.chapters.isEmpty)
+                Divider()
+                // As in Music. ←/→ and ⇧←/⇧→ (skip, chapter) are handled
+                // in RootView, where lists and the search field keep them.
+                Button("Volume Up") { player.nudgeVolume(by: 0.1) }
+                    .keyboardShortcut(.upArrow, modifiers: .command)
+                    .disabled(player.userVolume >= 1)
+                Button("Volume Down") { player.nudgeVolume(by: -0.1) }
+                    .keyboardShortcut(.downArrow, modifiers: .command)
+                    .disabled(player.userVolume <= 0)
+                Button(player.isSleepArmed ? "Cancel Sleep Timer" : "Sleep at End of Chapter") {
+                    player.toggleChapterSleep()
+                }
+                .keyboardShortcut("s", modifiers: [.command, .option])
+                .disabled(player.itemID.isEmpty)
                 Divider()
                 Button(app.inspectorShowing(.details) ? "Hide Info" : "Show Info") {
                     app.toggleInspector(.details)

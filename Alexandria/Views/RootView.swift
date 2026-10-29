@@ -7,7 +7,7 @@ struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Process-wide guard: the spacebar monitor must exist exactly once no
     /// matter how many windows create a RootView.
-    @MainActor private static var spaceMonitorInstalled = false
+    @MainActor private static var keyMonitorInstalled = false
 
     var body: some View {
         ZStack {
@@ -45,7 +45,7 @@ struct RootView: View {
             // final position lands on the server the item belongs to.
             app.onActiveServerWillChange = { player.stop() }
             player.onListened = { app.noteListening($0, itemID: $1) }
-            installSpacebarToggle()
+            installPlaybackKeys()
             if app.isLoggedIn && app.libraries.isEmpty {
                 await app.loadLibraries()
                 await app.flushPendingProgress()   // drain any offline-queued progress
@@ -56,26 +56,34 @@ struct RootView: View {
         }
     }
 
-    /// Space toggles play/pause anywhere except while editing text (so the
-    /// search field still types spaces). A menu shortcut can't do this because
-    /// focused buttons/controls swallow a bare Space key.
+    /// Playback from the keyboard, anywhere in the window: Space plays and
+    /// pauses, ←/→ skip back 15 / forward 30, ⇧←/⇧→ change chapter (see
+    /// PlaybackKey for why these aren't menu shortcuts).
     ///
-    /// Space is left alone when nothing is loaded (the login screen) and when
-    /// Full Keyboard Access is on — there Space presses the focused control,
-    /// and the media Play/Pause key still controls playback.
-    private func installSpacebarToggle() {
-        guard !Self.spaceMonitorInstalled else { return }
-        Self.spaceMonitorInstalled = true
+    /// Keys are left alone when nothing is loaded (the login screen), when
+    /// Full Keyboard Access is on (there they move and press the focus; the
+    /// media keys still work), and when the focused view uses them itself —
+    /// typing, lists and tables, sliders.
+    private func installPlaybackKeys() {
+        guard !Self.keyMonitorInstalled else { return }
+        Self.keyMonitorInstalled = true
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            guard event.keyCode == 49, event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty else {
-                return event
-            }
-            let responder = NSApp.keyWindow?.firstResponder
-            if responder is NSText || responder is NSTextView { return event }  // typing in a field
+            guard let action = PlaybackKey.action(keyCode: event.keyCode, modifiers: event.modifierFlags)
+            else { return event }
+            if PlaybackKey.belongsToFocusedView(action, responder: NSApp.keyWindow?.firstResponder) { return event }
             if NSApp.isFullKeyboardAccessEnabled { return event }
-            if MainActor.assumeIsolated({ player.itemID.isEmpty }) { return event }
-            MainActor.assumeIsolated { player.toggle() }
-            return nil
+            let handled = MainActor.assumeIsolated { () -> Bool in
+                guard !player.itemID.isEmpty else { return false }
+                switch action {
+                case .toggle: player.toggle()
+                case .skipBack: player.skip(-15)
+                case .skipForward: player.skip(30)
+                case .previousChapter: player.prevChapter()
+                case .nextChapter: player.nextChapter()
+                }
+                return true
+            }
+            return handled ? nil : event
         }
     }
 }
