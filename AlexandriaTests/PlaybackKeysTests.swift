@@ -30,12 +30,16 @@ final class PlaybackKeysTests: XCTestCase {
         XCTAssertNil(PlaybackKey.action(keyCode: 0, modifiers: []), "A is just a letter")
     }
 
-    func testTypingListsAndSlidersKeepTheirKeys() {
+    func testTypingAndSlidersKeepTheirKeys() {
         XCTAssertTrue(PlaybackKey.belongsToFocusedView(.skipBack, responder: NSTextView()))
         XCTAssertTrue(PlaybackKey.belongsToFocusedView(.toggle, responder: NSTextView()), "Space types a space")
-        XCTAssertTrue(PlaybackKey.belongsToFocusedView(.skipForward, responder: NSTableView()))
-        XCTAssertTrue(PlaybackKey.belongsToFocusedView(.nextChapter, responder: NSOutlineView()))
         XCTAssertTrue(PlaybackKey.belongsToFocusedView(.skipBack, responder: NSSlider()))
+    }
+
+    func testListsLeaveLeftAndRightToPlayback() {
+        // The sidebar and Up Next keep focus after a click; they only use ↑/↓.
+        XCTAssertFalse(PlaybackKey.belongsToFocusedView(.skipForward, responder: NSOutlineView()))
+        XCTAssertFalse(PlaybackKey.belongsToFocusedView(.nextChapter, responder: NSTableView()))
         XCTAssertFalse(PlaybackKey.belongsToFocusedView(.toggle, responder: NSTableView()),
                        "Space still plays from a list, as before")
         XCTAssertFalse(PlaybackKey.belongsToFocusedView(.skipBack, responder: nil))

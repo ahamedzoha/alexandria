@@ -31,11 +31,12 @@ enum PlaybackKey {
     }
 
     /// The focused view has its own use for this key: typing (Space and the
-    /// arrows move the caret), lists and tables (the arrows move the
-    /// selection), and sliders.
+    /// arrows move the caret) and sliders (←/→ step them). Lists and tables
+    /// move their selection with ↑/↓ only, so ←/→ still skip while the
+    /// sidebar or Up Next has focus — which, after a click, it usually does.
     static func belongsToFocusedView(_ action: PlaybackAction, responder: NSResponder?) -> Bool {
         if responder is NSText { return true }
         guard action != .toggle else { return false }
-        return responder is NSTableView || responder is NSCollectionView || responder is NSSlider
+        return responder is NSSlider || responder is NSCollectionView
     }
 }
